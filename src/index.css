@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-allianz-blue: #003781;
+  --color-allianz-light-blue: #0056b3;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+.allianz-gradient {
+  background: linear-gradient(135deg, #003781 0%, #0056b3 100%);
+}
