@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Dipendente o Agente dell'agenzia ManciniGroup.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["employee", "admin"] }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "DailyReport": {
+      "title": "Daily Report",
+      "description": "Rendicontazione giornaliera per dipendente.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "incassi": { "type": "integer" },
+        "recensioni": { "type": "integer" },
+        "prevMotorSe": { "type": "integer" },
+        "prevMotorTerzi": { "type": "integer" },
+        "prevRetailSe": { "type": "integer" },
+        "prevRetailTerzi": { "type": "integer" },
+        "emissSe": { "type": "integer" },
+        "emissTerzi": { "type": "integer" },
+        "sinistriMotor": { "type": "integer" },
+        "sinistriRamiVari": { "type": "integer" },
+        "midCorporate": { "type": "integer" },
+        "contattiVita": { "type": "integer" },
+        "contattiFondoPensione": { "type": "integer" },
+        "contattiEnergia": { "type": "integer" }
+      },
+      "required": ["userId", "userName", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Informazioni sul profilo utente."
+    },
+    "/daily_reports/{reportId}": {
+      "schema": "DailyReport",
+      "description": "Dati di rendicontazione giornalieri."
+    }
+  }
+}

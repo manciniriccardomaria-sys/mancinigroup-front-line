@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "manciniriccardomaria@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Data Validation
+    // ===============================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid is string && data.uid.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.size() < 150 &&
+             data.role in ['employee', 'admin'];
+    }
+
+    function isValidDailyReport(data) {
+      let fields = [
+        'userId', 'userName', 'date', 'incassi', 'recensioni', 
+        'prevMotorSe', 'prevMotorTerzi', 'prevRetailSe', 'prevRetailTerzi',
+        'emissSe', 'emissTerzi', 'sinistriMotor', 'sinistriRamiVari',
+        'midCorporate', 'contattiVita', 'contattiFondoPensione', 'contattiEnergia'
+      ];
+      return data.keys().hasAll(['userId', 'userName', 'date']) &&
+             data.userId is string && data.userId.size() < 128 &&
+             data.userName is string && data.userName.size() < 100 &&
+             data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             // Validate all counters are integers >= 0
+             (!('incassi' in data) || data.incassi is int && data.incassi >= 0) &&
+             (!('recensioni' in data) || data.recensioni is int && data.recensioni >= 0) &&
+             (!('prevMotorSe' in data) || data.prevMotorSe is int && data.prevMotorSe >= 0) &&
+             (!('prevMotorTerzi' in data) || data.prevMotorTerzi is int && data.prevMotorTerzi >= 0) &&
+             (!('prevRetailSe' in data) || data.prevRetailSe is int && data.prevRetailSe >= 0) &&
+             (!('prevRetailTerzi' in data) || data.prevRetailTerzi is int && data.prevRetailTerzi >= 0) &&
+             (!('emissSe' in data) || data.emissSe is int && data.emissSe >= 0) &&
+             (!('emissTerzi' in data) || data.emissTerzi is int && data.emissTerzi >= 0) &&
+             (!('sinistriMotor' in data) || data.sinistriMotor is int && data.sinistriMotor >= 0) &&
+             (!('sinistriRamiVari' in data) || data.sinistriRamiVari is int && data.sinistriRamiVari >= 0) &&
+             (!('midCorporate' in data) || data.midCorporate is int && data.midCorporate >= 0) &&
+             (!('contattiVita' in data) || data.contattiVita is int && data.contattiVita >= 0) &&
+             (!('contattiFondoPensione' in data) || data.contattiFondoPensione is int && data.contattiFondoPensione >= 0) &&
+             (!('contattiEnergia' in data) || data.contattiEnergia is int && data.contattiEnergia >= 0);
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidUser(request.resource.data) || isAdmin();
+    }
+
+    match /daily_reports/{reportId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create, update: if (isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidDailyReport(request.resource.data)) || isAdmin();
+    }
+  }
+}
