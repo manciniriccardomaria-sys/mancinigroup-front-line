@@ -41,7 +41,7 @@ import {
   Line,
   Cell
 } from 'recharts';
-import { formatDate, cn } from '../lib/utils';
+import { formatDate, getItalyDate, cn } from '../lib/utils';
 import { 
   format, 
   subDays, 
@@ -69,8 +69,8 @@ export default function AdminDashboard() {
   
   // Filters
   const [timeRange, setTimeRange] = useState<TimeRange>('day');
-  const [startDate, setStartDate] = useState<string>(formatDate(new Date()));
-  const [endDate, setEndDate] = useState<string>(formatDate(new Date()));
+  const [startDate, setStartDate] = useState<string>(() => getItalyDate());
+  const [endDate, setEndDate] = useState<string>(() => getItalyDate());
   
   // Comparison states
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
@@ -268,7 +268,7 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `mancinigroup_export_${selectedTab}_${formatDate(new Date())}.csv`);
+    link.setAttribute("download", `mancinigroup_export_${selectedTab}_${getItalyDate()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

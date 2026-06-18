@@ -7,7 +7,7 @@ import {
   CategoryId,
   createEmptyCategoryCounts,
 } from '../constants';
-import { formatDate } from '../lib/utils';
+import { getItalyDate } from '../lib/utils';
 import { 
   LogOut, 
   Plus, 
@@ -24,7 +24,14 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const today = formatDate(new Date());
+  const [today, setToday] = useState(() => getItalyDate());
+
+  useEffect(() => {
+    const updateDate = () => setToday(getItalyDate());
+    const interval = window.setInterval(updateDate, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -150,7 +157,12 @@ export default function EmployeeDashboard() {
               <h1 className="font-bold text-lg leading-none">{auth.currentUser?.displayName}</h1>
               <p className="text-blue-200 text-xs mt-1 flex items-center gap-1">
                 <Calendar size={12} />
-                {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {new Date().toLocaleDateString('it-IT', {
+                  timeZone: 'Europe/Rome',
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
               </p>
             </div>
           </div>
