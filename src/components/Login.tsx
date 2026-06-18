@@ -43,7 +43,13 @@ export default function Login() {
       }
     } catch (err: any) {
       console.error(err);
-      setError('Errore durante l\'accesso con Google. Assicurati che i popup siano abilitati.');
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('Questo dominio non e autorizzato in Firebase. Aggiungilo in Authentication > Settings > Authorized domains.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Il popup di accesso e stato bloccato dal browser. Abilita i popup e riprova.');
+      } else {
+        setError('Errore durante l\'accesso con Google. Riprova tra qualche istante.');
+      }
     } finally {
       setLoading(false);
     }
