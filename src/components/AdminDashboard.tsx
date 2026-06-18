@@ -561,7 +561,7 @@ export default function AdminDashboard() {
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                   <h3 className="font-bold text-slate-800 mb-6">Classifica Totale</h3>
                   <div className="space-y-4">
-                    {employeeComparisonData
+                    {[...employeeComparisonData]
                       .sort((a, b) => {
                         const sumA = CATEGORIES.reduce((s, c) => s + (a[c.id] || 0), 0);
                         const sumB = CATEGORIES.reduce((s, c) => s + (b[c.id] || 0), 0);
