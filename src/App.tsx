@@ -9,7 +9,7 @@ import {
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { UserProfile } from './constants';
+import { getAuthorizedAgent, UserProfile } from './constants';
 import Login from './components/Login';
 import EmployeeDashboard from './components/EmployeeDashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -31,19 +31,38 @@ export default function App() {
         try {
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await withTimeout(getDoc(docRef), 12000);
+          const authorizedAgent = currentUser.emailVerified
+            ? getAuthorizedAgent(currentUser.email)
+            : undefined;
+          const desiredProfile: UserProfile = {
+            uid: currentUser.uid,
+            name: authorizedAgent?.name ||
+              currentUser.displayName ||
+              currentUser.email?.split('@')[0] ||
+              'Utente',
+            email: currentUser.email || '',
+            role: authorizedAgent ? 'admin' : 'employee',
+          };
 
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
-          } else {
-            const newProfile: UserProfile = {
-              uid: currentUser.uid,
-              name: currentUser.displayName || currentUser.email?.split('@')[0] || 'Utente',
-              email: currentUser.email || '',
-              role: 'employee',
+            const storedProfile = docSnap.data() as UserProfile;
+            const updatedProfile = {
+              ...storedProfile,
+              ...desiredProfile,
             };
 
-            await withTimeout(setDoc(docRef, newProfile), 12000);
-            setProfile(newProfile);
+            if (
+              storedProfile.name !== updatedProfile.name ||
+              storedProfile.email !== updatedProfile.email ||
+              storedProfile.role !== updatedProfile.role
+            ) {
+              await withTimeout(setDoc(docRef, updatedProfile), 12000);
+            }
+
+            setProfile(updatedProfile);
+          } else {
+            await withTimeout(setDoc(docRef, desiredProfile), 12000);
+            setProfile(desiredProfile);
           }
         } catch (err) {
           console.error("Error fetching user profile:", err);

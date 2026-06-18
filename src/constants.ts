@@ -59,3 +59,18 @@ export interface UserProfile {
   email: string;
   role: 'employee' | 'admin';
 }
+
+export const AUTHORIZED_AGENTS = [
+  { name: 'Riccardo', email: 'manciniriccardomaria@gmail.com' },
+  { name: 'Pasquale', email: 'pasqualemancini62@gmail.com' },
+  { name: 'Davide', email: 'davidedalianipoli@gmail.com' },
+] as const;
+
+export function getAuthorizedAgent(email: string | null | undefined) {
+  const normalizedEmail = email?.trim().toLowerCase();
+  return AUTHORIZED_AGENTS.find(agent => agent.email === normalizedEmail);
+}
+
+export function isAuthorizedAgent(email: string | null | undefined) {
+  return Boolean(getAuthorizedAgent(email));
+}

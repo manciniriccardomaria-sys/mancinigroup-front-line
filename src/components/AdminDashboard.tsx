@@ -1,7 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
-import { CATEGORIES, DailyReport, UserProfile, CategoryId } from '../constants';
+import { collection, doc, query, onSnapshot, orderBy, setDoc } from 'firebase/firestore';
+import {
+  CATEGORIES,
+  DailyReport,
+  UserProfile,
+  CategoryId,
+  getAuthorizedAgent,
+} from '../constants';
 import { 
   Users, 
   BarChart3, 
@@ -84,7 +90,28 @@ export default function AdminDashboard() {
 
     const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const data = snapshot.docs.map(doc => doc.data() as UserProfile);
-      const employees = data.filter(u => u.role === 'employee');
+      const synchronizedUsers = data.map(user => {
+        const authorizedAgent = getAuthorizedAgent(user.email);
+        return authorizedAgent
+          ? { ...user, name: authorizedAgent.name, role: 'admin' as const }
+          : user;
+      });
+      const profilesToUpdate = synchronizedUsers.filter((user, index) => {
+        const original = data[index];
+        return original.name !== user.name || original.role !== user.role;
+      });
+
+      if (profilesToUpdate.length > 0) {
+        Promise.all(
+          profilesToUpdate.map(profile =>
+            setDoc(doc(db, 'users', profile.uid), profile)
+          )
+        ).catch(syncError => {
+          console.error('Error synchronizing authorized agents:', syncError);
+        });
+      }
+
+      const employees = synchronizedUsers.filter(u => u.role === 'employee');
       setUsers(employees);
       // Default select all employees for comparison
       if (selectedEmployees.length === 0) {

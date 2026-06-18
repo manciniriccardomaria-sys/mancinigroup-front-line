@@ -12,10 +12,20 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isApprovedAdminEmail() {
+      return isAuthenticated() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email in [
+          "manciniriccardomaria@gmail.com",
+          "pasqualemancini62@gmail.com",
+          "davidedalianipoli@gmail.com"
+        ];
+    }
+
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "manciniriccardomaria@gmail.com" && request.auth.token.email_verified == true));
+        (isApprovedAdminEmail() ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
     function ownsReportId(reportId) {
@@ -67,11 +77,16 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isValidUser(request.resource.data) &&
-        ((isOwner(userId) && request.resource.data.role == 'employee') || isAdmin());
+        ((isOwner(userId) &&
+          (request.resource.data.role == 'employee' ||
+           (request.resource.data.role == 'admin' && isApprovedAdminEmail()))) ||
+         isAdmin());
       allow update: if isValidUser(request.resource.data) &&
         ((isOwner(userId) &&
           request.resource.data.uid == resource.data.uid &&
-          request.resource.data.role == resource.data.role) || isAdmin());
+          (request.resource.data.role == resource.data.role ||
+           (request.resource.data.role == 'admin' && isApprovedAdminEmail()))) ||
+         isAdmin());
     }
 
     match /daily_reports/{reportId} {
