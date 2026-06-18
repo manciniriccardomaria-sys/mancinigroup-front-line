@@ -44,12 +44,6 @@ service cloud.firestore {
     }
 
     function isValidDailyReport(data) {
-      let fields = [
-        'userId', 'userName', 'date', 'incassi', 'recensioni', 
-        'prevMotorSe', 'prevMotorTerzi', 'prevRetailSe', 'prevRetailTerzi',
-        'emissSe', 'emissTerzi', 'sinistriMotor', 'sinistriRamiVari',
-        'midCorporate', 'contattiVita', 'contattiFondoPensione', 'contattiEnergia'
-      ];
       return data.keys().hasAll(['userId', 'userName', 'date']) &&
              data.userId is string && data.userId.size() < 128 &&
              data.userName is string && data.userName.size() < 100 &&

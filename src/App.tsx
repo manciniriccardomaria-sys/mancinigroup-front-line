@@ -31,9 +31,14 @@ export default function App() {
         try {
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await withTimeout(getDoc(docRef), 12000);
-          const authorizedAgent = currentUser.emailVerified
-            ? getAuthorizedAgent(currentUser.email)
+          const storedProfile = docSnap.exists()
+            ? docSnap.data() as UserProfile
             : undefined;
+          const authorizedAgent = getAuthorizedAgent(currentUser.email);
+          const shouldBeAdmin = Boolean(
+            authorizedAgent &&
+            (currentUser.emailVerified || storedProfile?.role === 'admin')
+          );
           const desiredProfile: UserProfile = {
             uid: currentUser.uid,
             name: authorizedAgent?.name ||
@@ -41,11 +46,10 @@ export default function App() {
               currentUser.email?.split('@')[0] ||
               'Utente',
             email: currentUser.email || '',
-            role: authorizedAgent ? 'admin' : 'employee',
+            role: shouldBeAdmin ? 'admin' : 'employee',
           };
 
-          if (docSnap.exists()) {
-            const storedProfile = docSnap.data() as UserProfile;
+          if (storedProfile) {
             const updatedProfile = {
               ...storedProfile,
               ...desiredProfile,
