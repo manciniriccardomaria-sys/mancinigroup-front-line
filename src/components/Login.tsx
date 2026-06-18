@@ -9,14 +9,13 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../constants';
-import { Loader2, ShieldCheck, User as UserIcon, Mail } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<'employee' | 'admin'>('employee');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,7 +72,7 @@ export default function Login() {
           uid: user.uid,
           name: name,
           email: email,
-          role: role
+          role: 'employee'
         };
         
         await setDoc(doc(db, 'users', user.uid), profile);
@@ -121,48 +120,17 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#003781] focus:border-transparent outline-none transition-all"
-                    placeholder="es. Marina"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Ruolo</label>
-                  <div className="flex gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setRole('employee')}
-                      className={`flex-1 py-2 px-4 rounded-lg border flex items-center justify-center gap-2 transition-all ${
-                        role === 'employee' 
-                          ? 'bg-blue-50 border-[#003781] text-[#003781]' 
-                          : 'border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      <UserIcon size={18} />
-                      Dipendente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRole('admin')}
-                      className={`flex-1 py-2 px-4 rounded-lg border flex items-center justify-center gap-2 transition-all ${
-                        role === 'admin' 
-                          ? 'bg-blue-50 border-[#003781] text-[#003781]' 
-                          : 'border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      <ShieldCheck size={18} />
-                      Agente
-                    </button>
-                  </div>
-                </div>
-              </>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#003781] focus:border-transparent outline-none transition-all"
+                  placeholder="es. Marina"
+                />
+              </div>
             )}
             
             <div>

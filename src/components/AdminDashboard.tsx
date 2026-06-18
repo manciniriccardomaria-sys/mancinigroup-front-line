@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { CATEGORIES, DailyReport, UserProfile, CategoryId } from '../constants';
 import { 
@@ -16,7 +16,9 @@ import {
   History,
   ArrowRightLeft,
   ChevronLeft,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -54,6 +56,7 @@ export default function AdminDashboard() {
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedTab, setSelectedTab] = useState<Tab>('overview');
   
   // Filters
@@ -71,9 +74,12 @@ export default function AdminDashboard() {
     const unsubscribeReports = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyReport));
       setReports(data);
+      setError('');
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'daily_reports');
+    }, (reportsError) => {
+      console.error('Error loading reports:', reportsError);
+      setError(getAdminErrorMessage(reportsError));
+      setLoading(false);
     });
 
     const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -84,8 +90,10 @@ export default function AdminDashboard() {
       if (selectedEmployees.length === 0) {
         setSelectedEmployees(employees.map(e => e.uid));
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+    }, (usersError) => {
+      console.error('Error loading users:', usersError);
+      setError(getAdminErrorMessage(usersError));
+      setLoading(false);
     });
 
     return () => {
@@ -223,6 +231,27 @@ export default function AdminDashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <Loader2 className="w-12 h-12 text-[#003781] animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-red-100 text-center">
+          <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="text-red-600" size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Dashboard non disponibile</h1>
+          <p className="text-slate-600 mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="flex items-center justify-center gap-2 w-full bg-[#003781] text-white py-3 rounded-xl font-semibold hover:bg-[#002a63] transition-colors"
+          >
+            <RefreshCw size={20} />
+            Riprova
+          </button>
+        </div>
       </div>
     );
   }
@@ -675,4 +704,16 @@ function getChartColor(index: number) {
 
 function Loader2({ className }: { className?: string }) {
   return <BarChart3 className={cn("animate-pulse", className)} />;
+}
+
+function getAdminErrorMessage(error: unknown) {
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String(error.code)
+    : '';
+
+  if (code.includes('permission-denied')) {
+    return 'Firebase ha rifiutato l\'accesso amministratore. Controlla il ruolo utente e pubblica le regole Firestore aggiornate.';
+  }
+
+  return 'Non e stato possibile caricare i dati della dashboard. Controlla la connessione e riprova.';
 }

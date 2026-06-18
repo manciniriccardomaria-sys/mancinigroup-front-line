@@ -57,3 +57,21 @@ Per usare login email/password o Google su GitHub Pages:
 ```
 
 Il file `firebase-applet-config.json` contiene la configurazione client Firebase. La chiave API Firebase web non e' un segreto, ma le regole Firestore devono comunque essere configurate correttamente.
+
+### Pubblicare le regole Firestore
+
+Il deploy su GitHub Pages pubblica solo il frontend e non aggiorna automaticamente le regole Firestore.
+
+1. Apri Firebase Console e seleziona il progetto `gen-lang-client-0773217916`.
+2. Vai in `Firestore Database`.
+3. Seleziona il database:
+
+```text
+ai-studio-395cbe35-6885-4b9b-ab23-c0ada51dceb3
+```
+
+4. Apri la scheda `Rules`.
+5. Sostituisci il contenuto con quello del file `firestore.rules`.
+6. Premi `Publish`.
+
+Se le regole vengono pubblicate sul database `(default)`, l'app continuera' a ricevere errori di permessi perche' usa il database indicato sopra.

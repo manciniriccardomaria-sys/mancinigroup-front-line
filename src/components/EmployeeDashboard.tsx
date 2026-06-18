@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { CATEGORIES, DailyReport, CategoryId } from '../constants';
 import { formatDate } from '../lib/utils';
 import { 
@@ -9,51 +9,70 @@ import {
   Minus, 
   Calendar, 
   User as UserIcon,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const today = formatDate(new Date());
 
   useEffect(() => {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setError('Sessione non disponibile. Esci e accedi nuovamente.');
+      setLoading(false);
+      return;
+    }
 
     const reportId = `${user.uid}_${today}`;
-    const unsubscribe = onSnapshot(doc(db, 'daily_reports', reportId), (docSnap) => {
-      if (docSnap.exists()) {
-        setReport(docSnap.data() as DailyReport);
-      } else {
-        const initialReport: DailyReport = {
-          userId: user.uid,
-          userName: user.displayName || 'Utente',
-          date: today,
-          incassi: 0,
-          recensioni: 0,
-          prevMotorSe: 0,
-          prevMotorTerzi: 0,
-          prevRetailSe: 0,
-          prevRetailTerzi: 0,
-          emissSe: 0,
-          emissTerzi: 0,
-          sinistriMotor: 0,
-          sinistriRamiVari: 0,
-          midCorporate: 0,
-          contattiVita: 0,
-          contattiFondoPensione: 0,
-          contattiEnergia: 0,
-        };
-        setReport(initialReport);
-      }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `daily_reports/${reportId}`);
-    });
+    const reportRef = doc(db, 'daily_reports', reportId);
+    const initialReport = createInitialReport(user.uid, user.displayName || 'Utente', today);
+    let unsubscribe: Unsubscribe | undefined;
+    let cancelled = false;
 
-    return () => unsubscribe();
+    const initializeReport = async () => {
+      try {
+        // Creating the document first avoids a denied read when today's report
+        // does not exist yet under owner-only Firestore rules.
+        await setDoc(reportRef, {
+          userId: initialReport.userId,
+          userName: initialReport.userName,
+          date: initialReport.date,
+        }, { merge: true });
+
+        if (cancelled) return;
+
+        unsubscribe = onSnapshot(reportRef, (docSnap) => {
+          const storedReport = docSnap.exists()
+            ? docSnap.data() as Partial<DailyReport>
+            : {};
+
+          setReport({ ...initialReport, ...storedReport });
+          setError('');
+          setLoading(false);
+        }, (snapshotError) => {
+          console.error('Error loading daily report:', snapshotError);
+          setError(getReportErrorMessage(snapshotError));
+          setLoading(false);
+        });
+      } catch (initializationError) {
+        console.error('Error initializing daily report:', initializationError);
+        setError(getReportErrorMessage(initializationError));
+        setLoading(false);
+      }
+    };
+
+    initializeReport();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [today]);
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
@@ -69,8 +88,9 @@ export default function EmployeeDashboard() {
     const reportId = `${auth.currentUser.uid}_${today}`;
     try {
       await setDoc(doc(db, 'daily_reports', reportId), updatedReport);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `daily_reports/${reportId}`);
+    } catch (saveError) {
+      console.error('Error saving daily report:', saveError);
+      setError(getReportErrorMessage(saveError));
     } finally {
       setSaving(false);
     }
@@ -80,6 +100,27 @@ export default function EmployeeDashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#003781]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-red-100 text-center">
+          <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="text-red-600" size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Report non disponibile</h1>
+          <p className="text-slate-600 mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="flex items-center justify-center gap-2 w-full bg-[#003781] text-white py-3 rounded-xl font-semibold hover:bg-[#002a63] transition-colors"
+          >
+            <RefreshCw size={20} />
+            Riprova
+          </button>
+        </div>
       </div>
     );
   }
@@ -167,4 +208,38 @@ export default function EmployeeDashboard() {
       </main>
     </div>
   );
+}
+
+function createInitialReport(userId: string, userName: string, date: string): DailyReport {
+  return {
+    userId,
+    userName,
+    date,
+    incassi: 0,
+    recensioni: 0,
+    prevMotorSe: 0,
+    prevMotorTerzi: 0,
+    prevRetailSe: 0,
+    prevRetailTerzi: 0,
+    emissSe: 0,
+    emissTerzi: 0,
+    sinistriMotor: 0,
+    sinistriRamiVari: 0,
+    midCorporate: 0,
+    contattiVita: 0,
+    contattiFondoPensione: 0,
+    contattiEnergia: 0,
+  };
+}
+
+function getReportErrorMessage(error: unknown) {
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String(error.code)
+    : '';
+
+  if (code.includes('permission-denied')) {
+    return 'Firebase ha rifiutato l\'accesso. Pubblica le regole Firestore aggiornate e riprova.';
+  }
+
+  return 'Non e stato possibile caricare il report giornaliero. Controlla la connessione e riprova.';
 }
