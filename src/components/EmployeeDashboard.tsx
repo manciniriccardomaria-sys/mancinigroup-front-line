@@ -195,9 +195,6 @@ export default function EmployeeDashboard() {
                         </div>
                         <div className="min-w-0">
                           <span className="block font-medium text-slate-700">{cat.label}</span>
-                          {'hint' in cat && cat.hint && (
-                            <span className="block text-xs text-slate-500 mt-0.5">{cat.hint}</span>
-                          )}
                         </div>
                       </div>
 

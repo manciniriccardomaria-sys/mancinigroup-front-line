@@ -41,21 +41,18 @@ export const CATEGORY_SECTIONS = [
       {
         id: 'smeg',
         label: 'SMEG',
-        hint: 'Informazione: I · Emissione: E',
         icon: Store,
         color: 'text-rose-600',
       },
       {
         id: 'vitarivConsegna',
         label: 'Vitariv (consegna)',
-        hint: 'Appuntamento generato: A',
         icon: ChartNoAxesCombined,
         color: 'text-green-600',
       },
       {
         id: 'longevityCare',
         label: 'Longevity Care',
-        hint: 'Informazione: I · Emissione: E',
         icon: HeartHandshake,
         color: 'text-fuchsia-600',
       },
