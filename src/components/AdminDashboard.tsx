@@ -274,6 +274,52 @@ export default function AdminDashboard() {
     document.body.removeChild(link);
   };
 
+  const exportHistoryBySourceCSV = () => {
+    const headers = [
+      'Data',
+      'Fonte',
+      'Email',
+      ...CATEGORY_SECTIONS.flatMap(section =>
+        section.categories.map(category => `${section.title} - ${category.label}`)
+      ),
+      'Totale giornaliero',
+    ];
+
+    const rows = [...filteredReports]
+      .sort((first, second) => {
+        const dateComparison = first.date.localeCompare(second.date);
+        if (dateComparison !== 0) return dateComparison;
+
+        const firstName = users.find(user => user.uid === first.userId)?.name || first.userName;
+        const secondName = users.find(user => user.uid === second.userId)?.name || second.userName;
+        return firstName.localeCompare(secondName, 'it');
+      })
+      .map(report => {
+        const user = users.find(item => item.uid === report.userId);
+        const categoryValues = CATEGORIES.map(category =>
+          getReportCategoryValue(report, category.id)
+        );
+        const dailyTotal = categoryValues.reduce((sum, value) => sum + value, 0);
+
+        return [
+          format(parseISO(report.date), 'dd/MM/yyyy'),
+          user?.name || report.userName || 'Sconosciuto',
+          user?.email || '',
+          ...categoryValues,
+          dailyTotal,
+        ];
+      });
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(value => escapeCSVCell(value)).join(';'))
+      .join('\r\n');
+
+    downloadCSV(
+      csv,
+      `mancinigroup_storico_fonte_giorno_${getItalyDate()}.csv`
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -360,13 +406,23 @@ export default function AdminDashboard() {
 
             {/* Date Range Selector */}
             <div className="flex flex-wrap items-center gap-4">
-              <button 
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
-              >
-                <Download size={16} />
-                Esporta CSV
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
+                >
+                  <Download size={16} />
+                  Esporta riepilogo
+                </button>
+                <button
+                  onClick={exportHistoryBySourceCSV}
+                  disabled={filteredReports.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#003781] text-white rounded-xl text-xs font-bold hover:bg-[#002a63] transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <History size={16} />
+                  Storico fonte/giorno
+                </button>
+              </div>
 
               <div className="flex flex-wrap items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
               <FilterButton active={timeRange === 'day'} onClick={() => setTimeRange('day')}>Giorno</FilterButton>
@@ -793,4 +849,24 @@ function getAdminErrorMessage(error: unknown) {
   }
 
   return 'Non e stato possibile caricare i dati della dashboard. Controlla la connessione e riprova.';
+}
+
+function escapeCSVCell(value: string | number) {
+  const text = String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadCSV(content: string, filename: string) {
+  const blob = new Blob([`\uFEFF${content}`], {
+    type: 'text/csv;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
