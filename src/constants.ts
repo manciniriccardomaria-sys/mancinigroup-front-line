@@ -1,56 +1,132 @@
-import { 
-  Banknote, 
-  Star, 
-  Car, 
-  Users, 
-  Home, 
-  FileText, 
-  ShieldAlert, 
-  Briefcase, 
-  HeartPulse, 
-  PiggyBank, 
+import {
+  Banknote,
+  BookOpenCheck,
+  BriefcaseBusiness,
+  Car,
+  CarFront,
+  ChartNoAxesCombined,
+  FileCheck2,
+  HeartHandshake,
+  Home,
+  HousePlus,
+  Info,
+  KeyRound,
+  PhoneCall,
+  PiggyBank,
+  ShieldAlert,
+  ShieldCheck,
+  ShoppingBag,
+  Star,
+  Store,
   Zap,
-  TrendingUp
 } from 'lucide-react';
 
-export const CATEGORIES = [
-  { id: 'incassi', label: 'Incassi', icon: Banknote, color: 'text-blue-600' },
-  { id: 'recensioni', label: 'Recensioni', icon: Star, color: 'text-yellow-500' },
-  { id: 'prevMotorSe', label: 'Preventivi Motor (Se)', icon: Car, color: 'text-blue-500' },
-  { id: 'prevMotorTerzi', label: 'Preventivi Motor (Terzi)', icon: Users, color: 'text-blue-400' },
-  { id: 'prevRetailSe', label: 'Preventivi Retail (Se)', icon: Home, color: 'text-indigo-500' },
-  { id: 'prevRetailTerzi', label: 'Preventivi Retail (Terzi)', icon: Users, color: 'text-indigo-400' },
-  { id: 'emissSe', label: 'Emissioni (Se)', icon: FileText, color: 'text-green-600' },
-  { id: 'emissTerzi', label: 'Emissioni (Terzi)', icon: Users, color: 'text-green-500' },
-  { id: 'sinistriMotor', label: 'Apertura Sinistri (Motor)', icon: ShieldAlert, color: 'text-red-600' },
-  { id: 'sinistriRamiVari', label: 'Apertura Sinistri (Rami vari)', icon: ShieldAlert, color: 'text-red-500' },
-  { id: 'midCorporate', label: 'Pratiche Mid-Corporate', icon: Briefcase, color: 'text-slate-600' },
-  { id: 'contattiVita', label: 'Contatti Vita', icon: HeartPulse, color: 'text-pink-500' },
-  { id: 'contattiFondoPensione', label: 'Contatti Fondo pensione', icon: PiggyBank, color: 'text-orange-500' },
-  { id: 'contattiEnergia', label: 'Contatti Energia', icon: Zap, color: 'text-yellow-600' },
-];
+export const CATEGORY_SECTIONS = [
+  {
+    id: 'reception',
+    title: 'Operazioni di ricezione',
+    categories: [
+      { id: 'incassi', label: 'Incassi', icon: Banknote, color: 'text-blue-600' },
+      { id: 'prevMotorSe', label: 'Preventivi Motor (se)', icon: Car, color: 'text-indigo-600' },
+      { id: 'emissMotorSe', label: 'Emissioni Motor (se)', icon: FileCheck2, color: 'text-violet-600' },
+      { id: 'prevRetailSe', label: 'Preventivi Retail (se)', icon: Home, color: 'text-fuchsia-600' },
+      { id: 'emissRetailSe', label: 'Emissioni Retail (se)', icon: HousePlus, color: 'text-pink-600' },
+      { id: 'infoVarie', label: 'Info varie', icon: Info, color: 'text-cyan-600' },
+    ],
+  },
+  {
+    id: 'priority',
+    title: 'Strategia commerciale quotidiana | Priorità 1',
+    categories: [
+      {
+        id: 'smeg',
+        label: 'SMEG',
+        hint: 'Informazione: I · Emissione: E',
+        icon: Store,
+        color: 'text-rose-600',
+      },
+      {
+        id: 'vitarivConsegna',
+        label: 'Vitariv (consegna)',
+        hint: 'Appuntamento generato: A',
+        icon: ChartNoAxesCombined,
+        color: 'text-green-600',
+      },
+      {
+        id: 'longevityCare',
+        label: 'Longevity Care',
+        hint: 'Informazione: I · Emissione: E',
+        icon: HeartHandshake,
+        color: 'text-fuchsia-600',
+      },
+      { id: 'winbackMag25', label: 'Winback (Mag25)', icon: PhoneCall, color: 'text-blue-700' },
+      { id: 'scegliAllianzGen26', label: 'ScegliAllianz (Gen26)', icon: PhoneCall, color: 'text-indigo-700' },
+      {
+        id: 'scegliAllianzConsegna',
+        label: 'ScegliAllianz (Consegna)',
+        icon: BookOpenCheck,
+        color: 'text-pink-600',
+      },
+    ],
+  },
+  {
+    id: 'other',
+    title: 'Altre operazioni tracciabili',
+    categories: [
+      { id: 'prevMotorTerzi', label: 'Preventivi Motor (terzi)', icon: CarFront, color: 'text-indigo-600' },
+      { id: 'prevRetailTerzi', label: 'Preventivi Retail (terzi)', icon: ShoppingBag, color: 'text-fuchsia-600' },
+      { id: 'sinistriMotor', label: 'Apertura Sinistri (motor)', icon: ShieldAlert, color: 'text-violet-600' },
+      { id: 'sinistriRetail', label: 'Apertura Sinistri (retail)', icon: ShieldCheck, color: 'text-purple-600' },
+      { id: 'midCorporate', label: 'Pratiche Mid-Co', icon: BriefcaseBusiness, color: 'text-orange-600' },
+      {
+        id: 'contattiFondoPensione',
+        label: 'Contatti Fondo Pensione',
+        icon: PiggyBank,
+        color: 'text-violet-600',
+      },
+      { id: 'contattiProtection', label: 'Contatti Protection', icon: HeartHandshake, color: 'text-pink-600' },
+      { id: 'contattiEnergia', label: 'Contatti Energia', icon: Zap, color: 'text-green-600' },
+      { id: 'recensioni', label: 'Recensioni', icon: Star, color: 'text-yellow-600' },
+      { id: 'contattiNoleggio', label: 'Contatti Noleggio', icon: KeyRound, color: 'text-fuchsia-600' },
+    ],
+  },
+] as const;
 
-export type CategoryId = typeof CATEGORIES[number]['id'];
+export const CATEGORIES = CATEGORY_SECTIONS.flatMap(section => [...section.categories]);
 
-export interface DailyReport {
+export type CategoryId = typeof CATEGORY_SECTIONS[number]['categories'][number]['id'];
+
+type LegacyCategoryId =
+  | 'emissSe'
+  | 'emissTerzi'
+  | 'sinistriRamiVari'
+  | 'contattiVita';
+
+export type DailyReport = {
   id?: string;
   userId: string;
   userName: string;
-  date: string; // YYYY-MM-DD
-  incassi: number;
-  recensioni: number;
-  prevMotorSe: number;
-  prevMotorTerzi: number;
-  prevRetailSe: number;
-  prevRetailTerzi: number;
-  emissSe: number;
-  emissTerzi: number;
-  sinistriMotor: number;
-  sinistriRamiVari: number;
-  midCorporate: number;
-  contattiVita: number;
-  contattiFondoPensione: number;
-  contattiEnergia: number;
+  date: string;
+} & Record<CategoryId, number> & Partial<Record<LegacyCategoryId, number>>;
+
+export function createEmptyCategoryCounts(): Record<CategoryId, number> {
+  return Object.fromEntries(
+    CATEGORIES.map(category => [category.id, 0])
+  ) as Record<CategoryId, number>;
+}
+
+export function getReportCategoryValue(
+  report: Partial<DailyReport>,
+  categoryId: CategoryId
+): number {
+  const currentValue = report[categoryId];
+  if (typeof currentValue === 'number') return currentValue;
+
+  if (categoryId === 'emissMotorSe') return report.emissSe || 0;
+  if (categoryId === 'sinistriRetail') return report.sinistriRamiVari || 0;
+  if (categoryId === 'contattiProtection') return report.contattiVita || 0;
+
+  return 0;
 }
 
 export interface UserProfile {

@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
 import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
-import { CATEGORIES, DailyReport, CategoryId } from '../constants';
+import {
+  CATEGORY_SECTIONS,
+  DailyReport,
+  CategoryId,
+  createEmptyCategoryCounts,
+} from '../constants';
 import { formatDate } from '../lib/utils';
 import { 
   LogOut, 
@@ -51,8 +56,15 @@ export default function EmployeeDashboard() {
           const storedReport = docSnap.exists()
             ? docSnap.data() as Partial<DailyReport>
             : {};
+          const normalizedReport = {
+            ...initialReport,
+            ...storedReport,
+            emissMotorSe: storedReport.emissMotorSe ?? storedReport.emissSe ?? 0,
+            sinistriRetail: storedReport.sinistriRetail ?? storedReport.sinistriRamiVari ?? 0,
+            contattiProtection: storedReport.contattiProtection ?? storedReport.contattiVita ?? 0,
+          };
 
-          setReport({ ...initialReport, ...storedReport });
+          setReport(normalizedReport);
           setError('');
           setLoading(false);
         }, (snapshotError) => {
@@ -152,44 +164,67 @@ export default function EmployeeDashboard() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 mt-6">
+      <main className="max-w-5xl mx-auto px-4 mt-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-slate-50 border-bottom border-slate-200 flex justify-between items-center">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
             <h2 className="font-semibold text-slate-700">Rendicontazione Giornaliera</h2>
             {saving && <span className="text-xs text-blue-600 animate-pulse font-medium">Salvataggio...</span>}
           </div>
 
-          <div className="divide-y divide-slate-100">
-            {CATEGORIES.map((cat) => (
-              <div key={cat.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className={`p-2 rounded-xl bg-slate-100 ${cat.color}`}>
-                    <cat.icon size={22} />
-                  </div>
-                  <span className="font-medium text-slate-700">{cat.label}</span>
+          <div>
+            {CATEGORY_SECTIONS.map((section, sectionIndex) => (
+              <section
+                key={section.id}
+                className={sectionIndex > 0 ? 'border-t-4 border-slate-100' : ''}
+              >
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase">
+                    {section.title}
+                  </h3>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center bg-slate-100 rounded-xl p-1">
-                    <button
-                      onClick={() => updateCount(cat.id as CategoryId, -1)}
-                      className="p-2 hover:bg-white hover:text-red-600 rounded-lg transition-all active:scale-90 disabled:opacity-30"
-                      disabled={report?.[cat.id as keyof DailyReport] === 0}
+                <div className="divide-y divide-slate-100">
+                  {section.categories.map(cat => (
+                    <div
+                      key={cat.id}
+                      className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors"
                     >
-                      <Minus size={18} />
-                    </button>
-                    <div className="w-12 text-center font-bold text-lg text-slate-800">
-                      {report?.[cat.id as keyof DailyReport] || 0}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`p-2 rounded-lg bg-slate-100 shrink-0 ${cat.color}`}>
+                          <cat.icon size={22} />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="block font-medium text-slate-700">{cat.label}</span>
+                          {'hint' in cat && cat.hint && (
+                            <span className="block text-xs text-slate-500 mt-0.5">{cat.hint}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center bg-slate-100 rounded-xl p-1 shrink-0">
+                        <button
+                          onClick={() => updateCount(cat.id, -1)}
+                          className="p-2 hover:bg-white hover:text-red-600 rounded-lg transition-all active:scale-90 disabled:opacity-30"
+                          disabled={report?.[cat.id] === 0}
+                          title={`Diminuisci ${cat.label}`}
+                        >
+                          <Minus size={18} />
+                        </button>
+                        <div className="w-10 sm:w-12 text-center font-bold text-lg text-slate-800">
+                          {report?.[cat.id] || 0}
+                        </div>
+                        <button
+                          onClick={() => updateCount(cat.id, 1)}
+                          className="p-2 hover:bg-white hover:text-green-600 rounded-lg transition-all active:scale-90"
+                          title={`Aumenta ${cat.label}`}
+                        >
+                          <Plus size={18} />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => updateCount(cat.id as CategoryId, 1)}
-                      className="p-2 hover:bg-white hover:text-green-600 rounded-lg transition-all active:scale-90"
-                    >
-                      <Plus size={18} />
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         </div>
@@ -215,20 +250,7 @@ function createInitialReport(userId: string, userName: string, date: string): Da
     userId,
     userName,
     date,
-    incassi: 0,
-    recensioni: 0,
-    prevMotorSe: 0,
-    prevMotorTerzi: 0,
-    prevRetailSe: 0,
-    prevRetailTerzi: 0,
-    emissSe: 0,
-    emissTerzi: 0,
-    sinistriMotor: 0,
-    sinistriRamiVari: 0,
-    midCorporate: 0,
-    contattiVita: 0,
-    contattiFondoPensione: 0,
-    contattiEnergia: 0,
+    ...createEmptyCategoryCounts(),
   };
 }
 

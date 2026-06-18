@@ -2,11 +2,13 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { db, auth } from '../firebase';
 import { collection, doc, query, onSnapshot, orderBy, setDoc } from 'firebase/firestore';
 import {
+  CATEGORY_SECTIONS,
   CATEGORIES,
   DailyReport,
   UserProfile,
   CategoryId,
   getAuthorizedAgent,
+  getReportCategoryValue,
 } from '../constants';
 import { 
   Users, 
@@ -72,7 +74,13 @@ export default function AdminDashboard() {
   
   // Comparison states
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [selectedCategoriesFL, setSelectedCategoriesFL] = useState<CategoryId[]>(['incassi', 'recensioni', 'prevMotorSe', 'prevMotorTerzi', 'prevRetailSe']);
+  const [selectedCategoriesFL, setSelectedCategoriesFL] = useState<CategoryId[]>([
+    'incassi',
+    'prevMotorSe',
+    'emissMotorSe',
+    'prevRetailSe',
+    'emissRetailSe',
+  ]);
   const [selectedCategoriesStorico, setSelectedCategoriesStorico] = useState<CategoryId[]>(['incassi']);
 
   useEffect(() => {
@@ -153,7 +161,10 @@ export default function AdminDashboard() {
   // Overview Data (Cards)
   const categoryTotals = useMemo(() => {
     return CATEGORIES.map(cat => {
-      const total = filteredReports.reduce((sum, r) => sum + (r[cat.id as keyof DailyReport] as number || 0), 0);
+      const total = filteredReports.reduce(
+        (sum, report) => sum + getReportCategoryValue(report, cat.id),
+        0
+      );
       return { ...cat, total };
     });
   }, [filteredReports]);
@@ -166,7 +177,10 @@ export default function AdminDashboard() {
       const data: any = { name: user?.name || 'Sconosciuto' };
       
       CATEGORIES.forEach(cat => {
-        data[cat.id] = userReports.reduce((sum, r) => sum + (r[cat.id as keyof DailyReport] as number || 0), 0);
+        data[cat.id] = userReports.reduce(
+          (sum, report) => sum + getReportCategoryValue(report, cat.id),
+          0
+        );
       });
       
       return data;
@@ -193,7 +207,10 @@ export default function AdminDashboard() {
       };
       
       selectedCategoriesStorico.forEach(catId => {
-        data[catId] = dayReports.reduce((sum, r) => sum + (r[catId as keyof DailyReport] as number || 0), 0);
+        data[catId] = dayReports.reduce(
+          (sum, report) => sum + getReportCategoryValue(report, catId),
+          0
+        );
       });
       
       return data;
@@ -208,7 +225,10 @@ export default function AdminDashboard() {
       let grandTotal = 0;
       
       CATEGORIES.forEach(cat => {
-        const val = userReports.reduce((sum, r) => sum + (r[cat.id as keyof DailyReport] as number || 0), 0);
+        const val = userReports.reduce(
+          (sum, report) => sum + getReportCategoryValue(report, cat.id),
+          0
+        );
         totals[cat.id] = val;
         grandTotal += val;
       });
@@ -391,19 +411,31 @@ export default function AdminDashboard() {
                   <TrendingUp size={20} className="text-blue-600" />
                   Totali Agenzia
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {categoryTotals.map((cat) => (
-                    <div key={cat.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className={cn("p-2.5 rounded-xl bg-slate-50", cat.color)}>
-                          <cat.icon size={24} />
-                        </div>
-                        {cat.total > 0 && (
-                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase tracking-wider">Attivo</span>
-                        )}
+                <div className="space-y-8">
+                  {CATEGORY_SECTIONS.map(section => (
+                    <div key={section.id}>
+                      <h4 className="text-sm font-bold text-slate-600 uppercase mb-3">
+                        {section.title}
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {section.categories.map(category => {
+                          const cat = categoryTotals.find(item => item.id === category.id)!;
+                          return (
+                            <div key={cat.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className={cn("p-2.5 rounded-xl bg-slate-50", cat.color)}>
+                                  <cat.icon size={24} />
+                                </div>
+                                {cat.total > 0 && (
+                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase">Attivo</span>
+                                )}
+                              </div>
+                              <h3 className="text-slate-500 text-xs font-semibold uppercase">{cat.label}</h3>
+                              <p className="text-3xl font-black text-slate-800 mt-1">{cat.total}</p>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-tight">{cat.label}</h3>
-                      <p className="text-3xl font-black text-slate-800 mt-1">{cat.total}</p>
                     </div>
                   ))}
                 </div>
@@ -504,27 +536,36 @@ export default function AdminDashboard() {
                   <Filter size={18} className="text-blue-600" />
                   Seleziona Attività da Confrontare
                 </h3>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => {
-                        setSelectedCategoriesFL(prev => 
-                          prev.includes(cat.id as CategoryId) 
-                            ? (prev.length > 1 ? prev.filter(id => id !== cat.id) : prev) 
-                            : [...prev, cat.id as CategoryId]
-                        );
-                      }}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
-                        selectedCategoriesFL.includes(cat.id as CategoryId)
-                          ? "bg-[#003781] text-white border-[#003781] shadow-md"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      )}
-                    >
-                      <cat.icon size={16} />
-                      {cat.label}
-                    </button>
+                <div className="space-y-5">
+                  {CATEGORY_SECTIONS.map(section => (
+                    <div key={section.id}>
+                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                        {section.title}
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {section.categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => {
+                              setSelectedCategoriesFL(prev =>
+                                prev.includes(cat.id)
+                                  ? (prev.length > 1 ? prev.filter(id => id !== cat.id) : prev)
+                                  : [...prev, cat.id]
+                              );
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
+                              selectedCategoriesFL.includes(cat.id)
+                                ? "bg-[#003781] text-white border-[#003781] shadow-md"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            )}
+                          >
+                            <cat.icon size={16} />
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -595,27 +636,36 @@ export default function AdminDashboard() {
                   <TrendingUp size={18} className="text-blue-600" />
                   Seleziona Attività da Analizzare
                 </h3>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => {
-                        setSelectedCategoriesStorico(prev => 
-                          prev.includes(cat.id as CategoryId) 
-                            ? (prev.length > 1 ? prev.filter(id => id !== cat.id) : prev) 
-                            : [...prev, cat.id as CategoryId]
-                        );
-                      }}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
-                        selectedCategoriesStorico.includes(cat.id as CategoryId)
-                          ? "bg-[#003781] text-white border-[#003781] shadow-md"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      )}
-                    >
-                      <cat.icon size={16} />
-                      {cat.label}
-                    </button>
+                <div className="space-y-5">
+                  {CATEGORY_SECTIONS.map(section => (
+                    <div key={section.id}>
+                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                        {section.title}
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {section.categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => {
+                              setSelectedCategoriesStorico(prev =>
+                                prev.includes(cat.id)
+                                  ? (prev.length > 1 ? prev.filter(id => id !== cat.id) : prev)
+                                  : [...prev, cat.id]
+                              );
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
+                              selectedCategoriesStorico.includes(cat.id)
+                                ? "bg-[#003781] text-white border-[#003781] shadow-md"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            )}
+                          >
+                            <cat.icon size={16} />
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
