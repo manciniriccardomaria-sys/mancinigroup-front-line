@@ -62,7 +62,7 @@ Scheda: `Winback`
 | Ultimo premio lordo | I |
 | Data uscita da Allianz | N |
 | Targa | R |
-| Cellulare | AW |
+| Cellulare | AR |
 
 Non sono disponibili codice cliente, email, ramo/tipologia polizza e motivo
 dell'uscita. La targa sostituisce il ramo come informazione mostrata.
