@@ -286,7 +286,7 @@ export default function EmployeeCallCalendar() {
                     key={date}
                     type="button"
                     onClick={() => setSelectedDate(date)}
-                    className={`aspect-square min-w-0 rounded-md text-xs relative flex items-center justify-center ${
+                    className={`h-10 min-w-0 rounded-md text-xs relative flex items-center justify-center ${
                       selected
                         ? 'bg-[#003781] text-white font-bold'
                         : isSameMonth(day, visibleMonth)
