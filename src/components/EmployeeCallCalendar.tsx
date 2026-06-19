@@ -53,6 +53,7 @@ export default function EmployeeCallCalendar() {
   const [selectedDate, setSelectedDate] = useState(() => getItalyDate());
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseISO(getItalyDate())));
   const [sourceMode, setSourceMode] = useState<SourceMode>('mine');
+  const [selectedHelpSources, setSelectedHelpSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [savingTaskId, setSavingTaskId] = useState('');
@@ -82,12 +83,47 @@ export default function EmployeeCallCalendar() {
     });
   }, []);
 
+  const availableHelpSources = useMemo(() => {
+    const sources = new Map<string, { key: string; code: string; name: string }>();
+
+    tasks.forEach(task => {
+      if (
+        ownSourceCodes.some(code => code === task.sourceCode) ||
+        isTaskExpired(task, today) ||
+        isTaskBeforeTrackingStart(task)
+      ) {
+        return;
+      }
+
+      const key = getSourceKey(task);
+      sources.set(key, {
+        key,
+        code: task.sourceCode,
+        name: task.sourceName,
+      });
+    });
+
+    return [...sources.values()].sort((first, second) => {
+      const codeComparison = first.code.localeCompare(second.code, 'it');
+      return codeComparison || first.name.localeCompare(second.name, 'it');
+    });
+  }, [tasks, ownSourceCodes, today]);
+
   const modeTasks = useMemo(() => tasks.filter(task => {
     if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;
     const isMine = ownSourceCodes.some(code => code === task.sourceCode);
     if (sourceMode === 'mine') return isMine;
-    return !isMine && (!task.assignedToUid || task.assignedToUid === currentUid);
-  }), [tasks, ownSourceCodes, sourceMode, currentUid, today]);
+    return !isMine &&
+      selectedHelpSources.includes(getSourceKey(task)) &&
+      (!task.assignedToUid || task.assignedToUid === currentUid);
+  }), [
+    tasks,
+    ownSourceCodes,
+    sourceMode,
+    currentUid,
+    today,
+    selectedHelpSources,
+  ]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
@@ -217,7 +253,9 @@ export default function EmployeeCallCalendar() {
             <p className="text-xs text-slate-500 mt-1">
               {sourceMode === 'mine'
                 ? `Le tue fonti: ${ownSourceCodes.join(', ')}`
-                : 'Chiamate disponibili appartenenti alle altre fonti'}
+                : selectedHelpSources.length > 0
+                  ? `${selectedHelpSources.length} fonti selezionate`
+                  : 'Seleziona le fonti che vuoi aiutare'}
             </p>
           </div>
 
@@ -247,6 +285,69 @@ export default function EmployeeCallCalendar() {
             </button>
           </div>
         </div>
+
+        {sourceMode === 'help' && (
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-700">Fonti da aiutare</h3>
+                <p className="text-xs text-slate-500">
+                  Calendario e clienti saranno filtrati sulla selezione.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedHelpSources(
+                    availableHelpSources.map(source => source.key)
+                  )}
+                  className="px-3 py-2 border border-slate-300 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Seleziona tutte
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedHelpSources([])}
+                  disabled={selectedHelpSources.length === 0}
+                  className="px-3 py-2 border border-slate-300 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                >
+                  Azzera
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+              {availableHelpSources.map(source => {
+                const checked = selectedHelpSources.includes(source.key);
+                return (
+                  <label
+                    key={source.key}
+                    className={`flex items-start gap-2 border rounded-lg p-3 cursor-pointer ${
+                      checked
+                        ? 'border-[#003781] bg-blue-50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelectedHelpSources(previous =>
+                        checked
+                          ? previous.filter(key => key !== source.key)
+                          : [...previous, source.key]
+                      )}
+                      className="mt-0.5 w-4 h-4 accent-[#003781] shrink-0"
+                    />
+                    <span className="min-w-0">
+                      <strong className="block text-sm text-slate-700">{source.code}</strong>
+                      <span className="block text-xs text-slate-500 break-words">{source.name}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)]">
           <div className="p-4 border-b xl:border-b-0 xl:border-r border-slate-200">
@@ -410,6 +511,16 @@ export default function EmployeeCallCalendar() {
                           {task.policyType && <span><strong>Ramo:</strong> {task.policyType}</span>}
                           {task.vehiclePlate && <span><strong>Targa:</strong> {task.vehiclePlate}</span>}
                           {task.coverages && <span><strong>Coperture:</strong> {task.coverages}</span>}
+                          {task.category === 'winback' && task.lastGrossPremium && (
+                            <span>
+                              <strong>Ultimo premio lordo:</strong> {formatPremium(task.lastGrossPremium)}
+                            </span>
+                          )}
+                          {task.category === 'winback' && task.exitDate && (
+                            <span>
+                              <strong>Data uscita:</strong> {formatDisplayDate(task.exitDate)}
+                            </span>
+                          )}
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -510,4 +621,16 @@ function adjustSuggestedCallback(selectedDate: string, today: string) {
   if (suggested.getDay() === 6) suggested = addDays(suggested, 2);
   if (suggested.getDay() === 0) suggested = addDays(suggested, 1);
   return format(suggested, 'yyyy-MM-dd');
+}
+
+function getSourceKey(task: Pick<CallTask, 'sourceCode' | 'sourceName'>) {
+  return `${task.sourceCode}::${task.sourceName}`;
+}
+
+function formatDisplayDate(value: string) {
+  return format(parseISO(value), 'dd/MM/yyyy', { locale: it });
+}
+
+function formatPremium(value: string) {
+  return value.includes('€') ? value : `${value} €`;
 }

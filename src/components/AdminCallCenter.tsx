@@ -162,6 +162,8 @@ export default function AdminCallCenter() {
       'Ramo',
       'Targa',
       'Data evento',
+      'Data uscita',
+      'Ultimo premio lordo',
     ];
     const rows = filteredTasks.map(task => [
       formatDate(task.callbackDate || task.dueDate),
@@ -175,6 +177,8 @@ export default function AdminCallCenter() {
       task.policyType,
       task.vehiclePlate,
       formatDate(task.eventDate),
+      formatDate(task.exitDate),
+      task.lastGrossPremium,
     ]);
     const csv = [headers, ...rows]
       .map(row => row.map(value => escapeCSVCell(value)).join(';'))
@@ -328,9 +332,21 @@ export default function AdminCallCenter() {
                     {task.assignedToName || 'Non assegnata'}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">
-                    {[task.policyNumber, task.policyType, task.vehiclePlate]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
+                    <div className="space-y-1">
+                      <p>
+                        {[task.policyNumber, task.policyType, task.vehiclePlate]
+                          .filter(Boolean)
+                          .join(' · ') || '—'}
+                      </p>
+                      {task.category === 'winback' && task.exitDate && (
+                        <p><strong>Uscita:</strong> {formatDate(task.exitDate)}</p>
+                      )}
+                      {task.category === 'winback' && task.lastGrossPremium && (
+                        <p>
+                          <strong>Premio lordo:</strong> {formatPremium(task.lastGrossPremium)}
+                        </p>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -469,4 +485,8 @@ function getOperationalStatus(task: CallTask, today: string) {
 function formatDate(value: string) {
   if (!value) return '';
   return format(parseISO(value), 'dd/MM/yyyy', { locale: it });
+}
+
+function formatPremium(value: string) {
+  return value.includes('€') ? value : `${value} €`;
 }
