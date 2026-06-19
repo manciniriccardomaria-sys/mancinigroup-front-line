@@ -1,5 +1,8 @@
 export const CLIENT_IMPORT_CONFIG = {
   weekendRule: 'next_monday',
+  sourceCodeAliases: {
+    '019': '008',
+  },
 
   newClients: {
     fileName: '01_Nuovi_Clienti.xlsx',

@@ -4,20 +4,20 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  signOut,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { UserProfile } from '../constants';
+import { auth } from '../firebase';
+import { isAuthorizedEmail } from '../constants';
 import { Loader2 } from 'lucide-react';
 
-export default function Login() {
+export default function Login({ initialError = '' }: { initialError?: string }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -27,18 +27,9 @@ export default function Login() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Check if profile exists, if not create as employee by default
-      const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
-      
-      if (!docSnap.exists()) {
-        const profile: UserProfile = {
-          uid: user.uid,
-          name: user.displayName || 'Utente',
-          email: user.email || '',
-          role: 'employee' // Default role for new Google users
-        };
-        await setDoc(docRef, profile);
+      if (!isAuthorizedEmail(user.email)) {
+        await signOut(auth);
+        setError('Questo indirizzo email non è autorizzato ad accedere all’app.');
       }
     } catch (err: any) {
       console.error(err);
@@ -60,6 +51,11 @@ export default function Login() {
     setError('');
 
     try {
+      if (!isAuthorizedEmail(email)) {
+        setError('Questo indirizzo email non è autorizzato ad accedere all’app.');
+        return;
+      }
+
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
@@ -67,15 +63,6 @@ export default function Login() {
         const user = userCredential.user;
         
         await updateProfile(user, { displayName: name });
-        
-        const profile: UserProfile = {
-          uid: user.uid,
-          name: name,
-          email: email,
-          role: 'employee'
-        };
-        
-        await setDoc(doc(db, 'users', user.uid), profile);
       }
     } catch (err: any) {
       console.error(err);

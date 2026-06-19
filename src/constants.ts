@@ -133,17 +133,73 @@ export interface UserProfile {
   role: 'employee' | 'admin';
 }
 
+export const AUTHORIZED_EMPLOYEES = [
+  {
+    name: 'Marina Bartoli',
+    email: 'b.marinamancinigroup@gmail.com',
+    sourceCodes: ['005', '043'],
+  },
+  {
+    name: 'Isabella Cappelluti',
+    email: 'isabella.cappelluti@gmail.com',
+    sourceCodes: ['057', '022'],
+  },
+  {
+    name: 'Nicoletta Cecchini',
+    email: 'nicolemancinigroup@gmail.com',
+    sourceCodes: ['017'],
+  },
+  {
+    name: 'Rosa Ruggieri',
+    email: 'rossellamancinigroup@gmail.com',
+    sourceCodes: ['003', '045'],
+  },
+  {
+    name: 'Angela Sforza',
+    email: 's.angelamancinigroup@gmail.com',
+    sourceCodes: ['028', '082', '038'],
+  },
+  {
+    name: 'Maria Valeria Bellapianta',
+    email: 'valeriamancinigroup@gmail.com',
+    sourceCodes: ['008'],
+  },
+] as const;
+
 export const AUTHORIZED_AGENTS = [
   { name: 'Riccardo', email: 'manciniriccardomaria@gmail.com' },
   { name: 'Pasquale', email: 'pasqualemancini62@gmail.com' },
   { name: 'Davide', email: 'davidedalianipoli@gmail.com' },
 ] as const;
 
+function normalizeEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase();
+}
+
+export function getAuthorizedEmployee(email: string | null | undefined) {
+  const normalizedEmail = normalizeEmail(email);
+  return AUTHORIZED_EMPLOYEES.find(employee => employee.email === normalizedEmail);
+}
+
 export function getAuthorizedAgent(email: string | null | undefined) {
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   return AUTHORIZED_AGENTS.find(agent => agent.email === normalizedEmail);
+}
+
+export function getAuthorizedUser(email: string | null | undefined) {
+  const agent = getAuthorizedAgent(email);
+  if (agent) return { ...agent, role: 'admin' as const };
+
+  const employee = getAuthorizedEmployee(email);
+  if (employee) return { ...employee, role: 'employee' as const };
+
+  return undefined;
 }
 
 export function isAuthorizedAgent(email: string | null | undefined) {
   return Boolean(getAuthorizedAgent(email));
+}
+
+export function isAuthorizedEmail(email: string | null | undefined) {
+  return Boolean(getAuthorizedUser(email));
 }

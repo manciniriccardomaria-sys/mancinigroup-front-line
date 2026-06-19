@@ -6,10 +6,10 @@ import {
   Navigate,
   useLocation
 } from 'react-router-dom';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { getAuthorizedAgent, UserProfile } from './constants';
+import { getAuthorizedUser, UserProfile } from './constants';
 import Login from './components/Login';
 import EmployeeDashboard from './components/EmployeeDashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -21,6 +21,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
+  const [accessError, setAccessError] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -28,25 +29,30 @@ export default function App() {
       setProfileError('');
 
       if (currentUser) {
+        const authorizedUser = getAuthorizedUser(currentUser.email);
+
+        if (!authorizedUser) {
+          setUser(null);
+          setProfile(null);
+          setAccessError('Questo indirizzo email non è autorizzato ad accedere all’app.');
+          await signOut(auth);
+          setLoading(false);
+          return;
+        }
+
+        setAccessError('');
+
         try {
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await withTimeout(getDoc(docRef), 12000);
           const storedProfile = docSnap.exists()
             ? docSnap.data() as UserProfile
             : undefined;
-          const authorizedAgent = getAuthorizedAgent(currentUser.email);
-          const shouldBeAdmin = Boolean(
-            authorizedAgent &&
-            (currentUser.emailVerified || storedProfile?.role === 'admin')
-          );
           const desiredProfile: UserProfile = {
             uid: currentUser.uid,
-            name: authorizedAgent?.name ||
-              currentUser.displayName ||
-              currentUser.email?.split('@')[0] ||
-              'Utente',
+            name: authorizedUser.name,
             email: currentUser.email || '',
-            role: shouldBeAdmin ? 'admin' : 'employee',
+            role: authorizedUser.role,
           };
 
           if (storedProfile) {
@@ -74,6 +80,7 @@ export default function App() {
           setProfileError(getProfileErrorMessage(err));
         }
       } else {
+        setUser(null);
         setProfile(null);
       }
       setLoading(false);
@@ -127,7 +134,7 @@ export default function App() {
         <Routes>
           <Route 
             path="/login" 
-            element={user ? <Navigate to="/" replace /> : <Login />} 
+            element={user ? <Navigate to="/" replace /> : <Login initialError={accessError} />}
           />
           
           <Route 

@@ -8,6 +8,11 @@ che e' esclusa da Git e non viene pubblicata su GitHub Pages.
 Dopo aver calcolato la data della chiamata, se questa cade di sabato o domenica
 viene spostata al lunedi' successivo.
 
+## Normalizzazione fonti
+
+La fonte non piu' attiva `019` viene convertita automaticamente nella fonte
+`008 - BELLAPIANTA MARIA VALERIA` durante tutte le importazioni.
+
 ## 01_Nuovi_Clienti.xlsx
 
 Scheda: `NuoviClienti`
@@ -68,4 +73,6 @@ Non sono disponibili codice cliente, email, ramo/tipologia polizza e motivo
 dell'uscita. La targa sostituisce il ramo come informazione mostrata.
 
 La chiamata viene programmata 10 giorni prima dell'anniversario successivo
-della data di uscita.
+della data di uscita. Esempio: uscita il 16 giugno 2025, anniversario il
+16 giugno 2026 e data calcolata il 6 giugno 2026. Poiche' il 6 giugno 2026 e'
+sabato, la chiamata viene spostata a lunedi' 8 giugno 2026.

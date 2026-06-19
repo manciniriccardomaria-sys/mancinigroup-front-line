@@ -46,3 +46,16 @@ Per collegare gli account alle fonti serve una tabella con:
 - codice e nome della sua fonte principale;
 - eventuali altre fonti gestite dalla stessa dipendente;
 - indicazione delle fonti appartenenti a collaboratori.
+
+## Dipendenti autorizzate e fonti
+
+| Dipendente | Email | Fonti |
+| --- | --- | --- |
+| Marina Bartoli | b.marinamancinigroup@gmail.com | 005, 043 |
+| Isabella Cappelluti | isabella.cappelluti@gmail.com | 057, 022 |
+| Nicoletta Cecchini | nicolemancinigroup@gmail.com | 017 |
+| Rosa Ruggieri | rossellamancinigroup@gmail.com | 003, 045 |
+| Angela Sforza | s.angelamancinigroup@gmail.com | 028, 082, 038 |
+| Maria Valeria Bellapianta | valeriamancinigroup@gmail.com | 008 |
+
+La fonte dismessa `019` viene assegnata alla fonte `008`.

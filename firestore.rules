@@ -14,7 +14,6 @@ service cloud.firestore {
 
     function isApprovedAdminEmail() {
       return isAuthenticated() &&
-        request.auth.token.email_verified == true &&
         request.auth.token.email in [
           "manciniriccardomaria@gmail.com",
           "pasqualemancini62@gmail.com",
@@ -22,14 +21,34 @@ service cloud.firestore {
         ];
     }
 
+    function isApprovedEmployeeEmail() {
+      return isAuthenticated() &&
+        request.auth.token.email in [
+          "b.marinamancinigroup@gmail.com",
+          "isabella.cappelluti@gmail.com",
+          "nicolemancinigroup@gmail.com",
+          "rossellamancinigroup@gmail.com",
+          "s.angelamancinigroup@gmail.com",
+          "valeriamancinigroup@gmail.com"
+        ];
+    }
+
+    function isApprovedUserEmail() {
+      return isApprovedAdminEmail() || isApprovedEmployeeEmail();
+    }
+
     function isAdmin() {
-      return isAuthenticated() && 
-        (isApprovedAdminEmail() ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      return isApprovedAdminEmail();
     }
 
     function ownsReportId(reportId) {
-      return isAuthenticated() && reportId.matches(request.auth.uid + '_.*');
+      return isApprovedEmployeeEmail() &&
+        reportId.matches(request.auth.uid + '_.*');
+    }
+
+    function roleMatchesApprovedEmail(data) {
+      return (isApprovedAdminEmail() && data.role == 'admin') ||
+        (isApprovedEmployeeEmail() && data.role == 'employee');
     }
 
     // ===============================================================
@@ -82,17 +101,17 @@ service cloud.firestore {
     // Match Rules
     // ===============================================================
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if (isOwner(userId) && isApprovedUserEmail()) || isAdmin();
       allow create: if isValidUser(request.resource.data) &&
-        ((isOwner(userId) &&
-          (request.resource.data.role == 'employee' ||
-           (request.resource.data.role == 'admin' && isApprovedAdminEmail()))) ||
+        (((isOwner(userId) && isApprovedUserEmail()) &&
+          request.resource.data.email == request.auth.token.email &&
+          roleMatchesApprovedEmail(request.resource.data)) ||
          isAdmin());
       allow update: if isValidUser(request.resource.data) &&
-        ((isOwner(userId) &&
+        (((isOwner(userId) && isApprovedUserEmail()) &&
           request.resource.data.uid == resource.data.uid &&
-          (request.resource.data.role == resource.data.role ||
-           (request.resource.data.role == 'admin' && isApprovedAdminEmail()))) ||
+          request.resource.data.email == request.auth.token.email &&
+          roleMatchesApprovedEmail(request.resource.data)) ||
          isAdmin());
     }
 
