@@ -511,6 +511,16 @@ export default function EmployeeCallCalendar() {
                           {task.policyType && <span><strong>Ramo:</strong> {task.policyType}</span>}
                           {task.vehiclePlate && <span><strong>Targa:</strong> {task.vehiclePlate}</span>}
                           {task.coverages && <span><strong>Coperture:</strong> {task.coverages}</span>}
+                          {task.category === 'scadenza_rata' && task.eventDate && (
+                            <span>
+                              <strong>Scadenza rata:</strong> {formatDisplayDate(task.eventDate)}
+                            </span>
+                          )}
+                          {task.category === 'scadenza_annuale' && task.eventDate && (
+                            <span>
+                              <strong>Scadenza annuale:</strong> {formatDisplayDate(task.eventDate)}
+                            </span>
+                          )}
                           {task.category === 'winback' && task.lastGrossPremium && (
                             <span>
                               <strong>Ultimo premio lordo:</strong> {formatPremium(task.lastGrossPremium)}

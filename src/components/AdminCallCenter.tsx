@@ -346,6 +346,12 @@ export default function AdminCallCenter() {
                           <strong>Premio lordo:</strong> {formatPremium(task.lastGrossPremium)}
                         </p>
                       )}
+                      {task.category === 'scadenza_rata' && task.eventDate && (
+                        <p><strong>Scadenza rata:</strong> {formatDate(task.eventDate)}</p>
+                      )}
+                      {task.category === 'scadenza_annuale' && task.eventDate && (
+                        <p><strong>Scadenza annuale:</strong> {formatDate(task.eventDate)}</p>
+                      )}
                     </div>
                   </td>
                 </tr>
