@@ -16,7 +16,6 @@ import {
   CalendarDays,
   ClipboardList,
   User as UserIcon,
-  CheckCircle2,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
@@ -28,7 +27,7 @@ export default function EmployeeDashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
-  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('calendar');
+  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('report');
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -152,7 +151,7 @@ export default function EmployeeDashboard() {
     <div className="min-h-screen bg-slate-50 pb-12">
       {/* Header */}
       <header className="bg-[#003781] text-white sticky top-0 z-10 shadow-md">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg">
               <UserIcon size={20} />
@@ -180,20 +179,8 @@ export default function EmployeeDashboard() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 mt-6">
-        <div className="mb-5 inline-flex bg-white border border-slate-200 p-1 rounded-lg">
-          <button
-            type="button"
-            onClick={() => setSelectedView('calendar')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
-              selectedView === 'calendar'
-                ? 'bg-[#003781] text-white'
-                : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <CalendarDays size={17} />
-            Calendario chiamate
-          </button>
+      <main className="max-w-7xl mx-auto px-4 mt-4">
+        <div className="mb-4 inline-flex bg-white border border-slate-200 p-1 rounded-lg">
           <button
             type="button"
             onClick={() => setSelectedView('report')}
@@ -206,85 +193,92 @@ export default function EmployeeDashboard() {
             <ClipboardList size={17} />
             Report giornaliero
           </button>
+          <button
+            type="button"
+            onClick={() => setSelectedView('calendar')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
+              selectedView === 'calendar'
+                ? 'bg-[#003781] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarDays size={17} />
+            Calendario chiamate
+          </button>
         </div>
 
         {selectedView === 'calendar' && <EmployeeCallCalendar />}
 
         {selectedView === 'report' && (
-          <>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-            <h2 className="font-semibold text-slate-700">Rendicontazione Giornaliera</h2>
-            {saving && <span className="text-xs text-blue-600 animate-pulse font-medium">Salvataggio...</span>}
-          </div>
+          <section className="space-y-3">
+            <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-800">Rendicontazione giornaliera</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ogni variazione viene salvata automaticamente.
+                </p>
+              </div>
+              <span className={`text-xs font-bold whitespace-nowrap ${
+                saving ? 'text-blue-600 animate-pulse' : 'text-emerald-600'
+              }`}>
+                {saving ? 'Salvataggio...' : 'Dati salvati'}
+              </span>
+            </div>
 
-          <div>
-            {CATEGORY_SECTIONS.map((section, sectionIndex) => (
-              <section
-                key={section.id}
-                className={sectionIndex > 0 ? 'border-t-4 border-slate-100' : ''}
-              >
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase">
-                    {section.title}
-                  </h3>
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+              {CATEGORY_SECTIONS.map(section => (
+                <section
+                  key={section.id}
+                  className="bg-white border border-slate-200 rounded-lg overflow-hidden"
+                >
+                  <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-200 min-h-11 flex items-center">
+                    <h3 className="text-xs font-bold text-slate-700 uppercase">
+                      {section.title}
+                    </h3>
+                  </div>
 
-                <div className="divide-y divide-slate-100">
-                  {section.categories.map(cat => (
-                    <div
-                      key={cat.id}
-                      className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2 rounded-lg bg-slate-100 shrink-0 ${cat.color}`}>
-                          <cat.icon size={22} />
+                  <div className="divide-y divide-slate-100">
+                    {section.categories.map(cat => (
+                      <div
+                        key={cat.id}
+                        className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${cat.color}`}>
+                            <cat.icon size={17} />
+                          </div>
+                          <span className="block text-sm font-medium text-slate-700 leading-tight">
+                            {cat.label}
+                          </span>
                         </div>
-                        <div className="min-w-0">
-                          <span className="block font-medium text-slate-700">{cat.label}</span>
+
+                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+                          <button
+                            onClick={() => updateCount(cat.id, -1)}
+                            className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
+                            disabled={report?.[cat.id] === 0}
+                            title={`Diminuisci ${cat.label}`}
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <div className="w-8 text-center font-bold text-base text-slate-800">
+                            {report?.[cat.id] || 0}
+                          </div>
+                          <button
+                            onClick={() => updateCount(cat.id, 1)}
+                            className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
+                            title={`Aumenta ${cat.label}`}
+                          >
+                            <Plus size={16} />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center bg-slate-100 rounded-xl p-1 shrink-0">
-                        <button
-                          onClick={() => updateCount(cat.id, -1)}
-                          className="p-2 hover:bg-white hover:text-red-600 rounded-lg transition-all active:scale-90 disabled:opacity-30"
-                          disabled={report?.[cat.id] === 0}
-                          title={`Diminuisci ${cat.label}`}
-                        >
-                          <Minus size={18} />
-                        </button>
-                        <div className="w-10 sm:w-12 text-center font-bold text-lg text-slate-800">
-                          {report?.[cat.id] || 0}
-                        </div>
-                        <button
-                          onClick={() => updateCount(cat.id, 1)}
-                          className="p-2 hover:bg-white hover:text-green-600 rounded-lg transition-all active:scale-90"
-                          title={`Aumenta ${cat.label}`}
-                        >
-                          <Plus size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-8 bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-start gap-4">
-          <div className="bg-blue-600 p-2 rounded-full text-white">
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <h3 className="font-bold text-blue-900">Ottimo lavoro!</h3>
-            <p className="text-blue-700 text-sm mt-1">
-              Ogni click viene salvato istantaneamente. I dati sono visibili solo agli agenti nella dashboard di riepilogo.
-            </p>
-          </div>
-        </div>
-          </>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </div>
