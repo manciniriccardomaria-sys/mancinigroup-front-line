@@ -97,6 +97,85 @@ service cloud.firestore {
              (!('contattiEnergia' in data) || data.contattiEnergia is int && data.contattiEnergia >= 0);
     }
 
+    function isValidCampaign(data) {
+      return data.keys().hasAll([
+        'name',
+        'description',
+        'monthsAfterStart',
+        'active'
+      ]) &&
+        data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+        data.description is string && data.description.size() < 500 &&
+        data.monthsAfterStart is int &&
+        data.monthsAfterStart > 0 && data.monthsAfterStart <= 120 &&
+        data.active is bool;
+    }
+
+    function isValidCallTask(data) {
+      return data.keys().hasAll([
+        'importType',
+        'category',
+        'categoryLabel',
+        'clientName',
+        'sourceCode',
+        'sourceName',
+        'eventDate',
+        'dueDate',
+        'status',
+        'sourceFingerprint'
+      ]) &&
+        data.importType in ['newClients', 'expirations', 'winback'] &&
+        data.category in [
+          'campagna',
+          'scadenza_rata',
+          'scadenza_annuale',
+          'winback'
+        ] &&
+        data.categoryLabel is string && data.categoryLabel.size() < 150 &&
+        data.clientName is string &&
+        data.clientName.size() > 0 && data.clientName.size() < 200 &&
+        data.sourceCode is string && data.sourceCode.size() < 20 &&
+        data.sourceName is string && data.sourceName.size() < 200 &&
+        data.eventDate is string &&
+        data.eventDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.dueDate is string &&
+        data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.status in [
+          'da_chiamare',
+          'chiamato',
+          'da_richiamare',
+          'non_raggiungibile',
+          'cambio_rottamazione_macchina',
+          'cliente_perso'
+        ] &&
+        data.sourceFingerprint is string &&
+        data.sourceFingerprint.size() > 0 && data.sourceFingerprint.size() < 100 &&
+        (!('callbackDate' in data) ||
+          data.callbackDate is string &&
+          data.callbackDate.matches('^\\d{4}-\\d{2}-\\d{2}$')) &&
+        (data.status != 'da_richiamare' || 'callbackDate' in data);
+    }
+
+    function employeeCanUpdateCallTask() {
+      return isApprovedEmployeeEmail() &&
+        (!('assignedToUid' in resource.data) ||
+          resource.data.assignedToUid == '' ||
+          resource.data.assignedToUid == request.auth.uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'callbackDate',
+          'assignedToUid',
+          'assignedToEmail',
+          'assignedToName',
+          'updatedByUid',
+          'updatedByName',
+          'updatedAt'
+        ]) &&
+        request.resource.data.assignedToUid == request.auth.uid &&
+        request.resource.data.assignedToEmail == request.auth.token.email &&
+        request.resource.data.updatedByUid == request.auth.uid;
+    }
+
     // ===============================================================
     // Match Rules
     // ===============================================================
@@ -120,6 +199,24 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create, update: if isValidDailyReport(request.resource.data) &&
         ((ownsReportId(reportId) && request.resource.data.userId == request.auth.uid) || isAdmin());
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if isApprovedUserEmail();
+      allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /call_tasks/{taskId} {
+      allow read: if isApprovedUserEmail();
+      allow create: if isAdmin() && isValidCallTask(request.resource.data);
+      allow update: if isValidCallTask(request.resource.data) &&
+        (isAdmin() || employeeCanUpdateCallTask());
+      allow delete: if isAdmin();
+    }
+
+    match /import_runs/{runId} {
+      allow read, create: if isAdmin();
     }
   }
 }

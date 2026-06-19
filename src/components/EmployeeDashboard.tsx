@@ -13,11 +13,14 @@ import {
   Plus, 
   Minus, 
   Calendar, 
+  CalendarDays,
+  ClipboardList,
   User as UserIcon,
   CheckCircle2,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
+import EmployeeCallCalendar from './EmployeeCallCalendar';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -25,6 +28,7 @@ export default function EmployeeDashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
+  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('calendar');
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -177,7 +181,38 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="mb-5 inline-flex bg-white border border-slate-200 p-1 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setSelectedView('calendar')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
+              selectedView === 'calendar'
+                ? 'bg-[#003781] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarDays size={17} />
+            Calendario chiamate
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedView('report')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
+              selectedView === 'report'
+                ? 'bg-[#003781] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <ClipboardList size={17} />
+            Report giornaliero
+          </button>
+        </div>
+
+        {selectedView === 'calendar' && <EmployeeCallCalendar />}
+
+        {selectedView === 'report' && (
+          <>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
             <h2 className="font-semibold text-slate-700">Rendicontazione Giornaliera</h2>
             {saving && <span className="text-xs text-blue-600 animate-pulse font-medium">Salvataggio...</span>}
@@ -249,6 +284,8 @@ export default function EmployeeDashboard() {
             </p>
           </div>
         </div>
+          </>
+        )}
       </main>
     </div>
   );

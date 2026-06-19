@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
+import { FileUp, PhoneCall } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -56,8 +57,11 @@ import {
   subMonths
 } from 'date-fns';
 import { it } from 'date-fns/locale';
+import AdminImportPanel from './AdminImportPanel';
+import AdminCallCenter from './AdminCallCenter';
+import { downloadCSV, escapeCSVCell } from '../lib/csv';
 
-type Tab = 'overview' | 'dettaglio_fl' | 'storico';
+type Tab = 'overview' | 'dettaglio_fl' | 'storico' | 'chiamate' | 'importazioni';
 type TimeRange = 'day' | 'week' | 'month' | 'custom';
 
 export default function AdminDashboard() {
@@ -377,6 +381,18 @@ export default function AdminDashboard() {
             icon={<History size={20} />}
             label="Storico"
           />
+          <NavItem
+            active={selectedTab === 'chiamate'}
+            onClick={() => setSelectedTab('chiamate')}
+            icon={<PhoneCall size={20} />}
+            label="Monitoraggio chiamate"
+          />
+          <NavItem
+            active={selectedTab === 'importazioni'}
+            onClick={() => setSelectedTab('importazioni')}
+            icon={<FileUp size={20} />}
+            label="Importazioni"
+          />
           
           <div className="pt-4 mt-4 border-t border-white/10">
             <button 
@@ -400,12 +416,15 @@ export default function AdminDashboard() {
                 {selectedTab === 'overview' && 'Panoramica Agenzia'}
                 {selectedTab === 'dettaglio_fl' && 'Dettaglio Front Line'}
                 {selectedTab === 'storico' && 'Analisi Storica'}
+                {selectedTab === 'chiamate' && 'Monitoraggio Chiamate'}
+                {selectedTab === 'importazioni' && 'Importazioni e Campagne'}
               </h2>
               <p className="text-slate-500 text-sm">Gestione e monitoraggio attività ManciniGroup</p>
             </div>
 
             {/* Date Range Selector */}
-            <div className="flex flex-wrap items-center gap-4">
+            {['overview', 'dettaglio_fl', 'storico'].includes(selectedTab) && (
+              <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={exportToCSV}
@@ -451,10 +470,11 @@ export default function AdminDashboard() {
                   </>
                 )}
               </div>
+              </div>
             </div>
+            )}
           </div>
-        </div>
-      </header>
+        </header>
 
         {/* Tab Content */}
         <div className="space-y-8">
@@ -782,6 +802,10 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+
+          {selectedTab === 'chiamate' && <AdminCallCenter />}
+
+          {selectedTab === 'importazioni' && <AdminImportPanel />}
         </div>
       </main>
     </div>
@@ -849,24 +873,4 @@ function getAdminErrorMessage(error: unknown) {
   }
 
   return 'Non e stato possibile caricare i dati della dashboard. Controlla la connessione e riprova.';
-}
-
-function escapeCSVCell(value: string | number) {
-  const text = String(value);
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function downloadCSV(content: string, filename: string) {
-  const blob = new Blob([`\uFEFF${content}`], {
-    type: 'text/csv;charset=utf-8',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 }
