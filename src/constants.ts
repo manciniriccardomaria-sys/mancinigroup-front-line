@@ -164,6 +164,11 @@ export const AUTHORIZED_EMPLOYEES = [
     email: 'valeriamancinigroup@gmail.com',
     sourceCodes: ['008'],
   },
+  {
+    name: 'Riccardo Test',
+    email: 'manciniriccardo9@gmail.com',
+    sourceCodes: [],
+  },
 ] as const;
 
 export const AUTHORIZED_AGENTS = [
