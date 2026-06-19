@@ -37,7 +37,10 @@ import { getAuthorizedEmployee } from '../constants';
 import {
   CallTask,
   getTaskEffectiveDate,
+  isTaskActionable,
+  isTaskBeforeTrackingStart,
   isTaskClosed,
+  isTaskExpired,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { getItalyDate } from '../lib/utils';
@@ -80,10 +83,11 @@ export default function EmployeeCallCalendar() {
   }, []);
 
   const modeTasks = useMemo(() => tasks.filter(task => {
+    if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;
     const isMine = ownSourceCodes.some(code => code === task.sourceCode);
     if (sourceMode === 'mine') return isMine;
     return !isMine && (!task.assignedToUid || task.assignedToUid === currentUid);
-  }), [tasks, ownSourceCodes, sourceMode, currentUid]);
+  }), [tasks, ownSourceCodes, sourceMode, currentUid, today]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
@@ -94,12 +98,13 @@ export default function EmployeeCallCalendar() {
   const countsByDate = useMemo(() => {
     const counts = new Map<string, number>();
     modeTasks.forEach(task => {
-      const date = getTaskEffectiveDate(task);
+      let date = getTaskEffectiveDate(task);
       if (!date || isTaskClosed(task.status)) return;
+      if (isTaskActionable(task, today)) date = today;
       counts.set(date, (counts.get(date) || 0) + 1);
     });
     return counts;
-  }, [modeTasks]);
+  }, [modeTasks, today]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -108,9 +113,7 @@ export default function EmployeeCallCalendar() {
       .filter(task => {
         const effectiveDate = getTaskEffectiveDate(task);
         const isSelectedDay = effectiveDate === selectedDate;
-        const isOverdue = selectedDate === today &&
-          effectiveDate < today &&
-          !isTaskClosed(task.status);
+        const isOverdue = selectedDate === today && isTaskActionable(task, today);
         const matchesSearch = !normalizedSearch || [
           task.clientName,
           task.phone,
@@ -132,7 +135,7 @@ export default function EmployeeCallCalendar() {
   }, [modeTasks, selectedDate, today, search, category]);
 
   const overdueCount = modeTasks.filter(task =>
-    getTaskEffectiveDate(task) < today && !isTaskClosed(task.status)
+    getTaskEffectiveDate(task) < today && isTaskActionable(task, today)
   ).length;
 
   const claimTask = async (task: CallTask) => {
@@ -466,6 +469,7 @@ export default function EmployeeCallCalendar() {
                             <input
                               type="date"
                               min={today}
+                              max={task.eventDate}
                               value={callbackDate}
                               onChange={event => setCallbackDate(event.target.value)}
                               className="min-w-0 flex-1 border border-amber-300 rounded-lg px-2 py-2 text-sm"

@@ -1,24 +1,30 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
+  CalendarClock,
   CheckCircle2,
+  Clock3,
   Download,
   PhoneCall,
   Search,
-  UserCheck,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { db } from '../firebase';
 import {
   CallTask,
   getTaskEffectiveDate,
+  isTaskActionable,
+  isTaskBeforeTrackingStart,
   isTaskClosed,
+  isTaskExpired,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
+import { getItalyDate } from '../lib/utils';
 
 const PAGE_SIZE = 100;
+type OperationalView = 'today' | 'next7' | 'active' | 'history';
 
 export default function AdminCallCenter() {
   const [tasks, setTasks] = useState<CallTask[]>([]);
@@ -30,7 +36,10 @@ export default function AdminCallCenter() {
   const [assignee, setAssignee] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [operationalView, setOperationalView] = useState<OperationalView>('today');
   const [page, setPage] = useState(1);
+  const today = getItalyDate();
+  const nextSevenDays = format(addDays(parseISO(today), 7), 'yyyy-MM-dd');
 
   useEffect(() => {
     return onSnapshot(collection(db, 'call_tasks'), snapshot => {
@@ -70,8 +79,22 @@ export default function AdminCallCenter() {
           task.policyNumber,
           task.vehiclePlate,
         ].some(value => value?.toLowerCase().includes(normalizedSearch));
+        const matchesOperationalView = {
+          today: isTaskActionable(task, today),
+          next7: !isTaskClosed(task.status) &&
+            !isTaskExpired(task, today) &&
+            !isTaskBeforeTrackingStart(task) &&
+            effectiveDate > today &&
+            effectiveDate <= nextSevenDays,
+          active: !isTaskClosed(task.status) &&
+            !isTaskExpired(task, today) &&
+            !isTaskBeforeTrackingStart(task),
+          history: isTaskClosed(task.status) ||
+            isTaskExpired(task, today) ||
+            isTaskBeforeTrackingStart(task),
+        }[operationalView];
 
-        return matchesSearch &&
+        return matchesSearch && matchesOperationalView &&
           (status === 'all' || task.status === status) &&
           (category === 'all' || task.category === category) &&
           (source === 'all' || task.sourceCode === source) &&
@@ -85,7 +108,19 @@ export default function AdminCallCenter() {
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
       });
-  }, [tasks, search, status, category, source, assignee, startDate, endDate]);
+  }, [
+    tasks,
+    search,
+    status,
+    category,
+    source,
+    assignee,
+    startDate,
+    endDate,
+    operationalView,
+    today,
+    nextSevenDays,
+  ]);
 
   useEffect(() => setPage(1), [
     search,
@@ -95,11 +130,22 @@ export default function AdminCallCenter() {
     assignee,
     startDate,
     endDate,
+    operationalView,
   ]);
 
-  const openCount = filteredTasks.filter(task => !isTaskClosed(task.status)).length;
-  const completedCount = filteredTasks.filter(task => isTaskClosed(task.status)).length;
-  const assignedCount = filteredTasks.filter(task => task.assignedToUid).length;
+  const todayCount = tasks.filter(task => isTaskActionable(task, today)).length;
+  const overdueCount = tasks.filter(task =>
+    isTaskActionable(task, today) && getTaskEffectiveDate(task) < today
+  ).length;
+  const nextSevenCount = tasks.filter(task => {
+    const effectiveDate = getTaskEffectiveDate(task);
+    return !isTaskClosed(task.status) &&
+      !isTaskExpired(task, today) &&
+      !isTaskBeforeTrackingStart(task) &&
+      effectiveDate > today &&
+      effectiveDate <= nextSevenDays;
+  }).length;
+  const completedCount = tasks.filter(task => isTaskClosed(task.status)).length;
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -123,7 +169,7 @@ export default function AdminCallCenter() {
       task.phone,
       task.categoryLabel,
       `${task.sourceCode} - ${task.sourceName}`,
-      getStatusLabel(task.status),
+      getOperationalStatus(task, today),
       task.assignedToName || '',
       task.policyNumber,
       task.policyType,
@@ -144,13 +190,40 @@ export default function AdminCallCenter() {
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-2 xl:grid-cols-4 border border-slate-200 bg-white rounded-lg overflow-hidden">
-        <Metric label="Risultati" value={filteredTasks.length} icon={<PhoneCall size={18} />} />
-        <Metric label="Da lavorare" value={openCount} icon={<PhoneCall size={18} />} />
+        <Metric label="Da lavorare oggi" value={todayCount} icon={<PhoneCall size={18} />} />
+        <Metric label="Arretrate ancora valide" value={overdueCount} icon={<Clock3 size={18} />} />
+        <Metric label="Prossimi 7 giorni" value={nextSevenCount} icon={<CalendarClock size={18} />} />
         <Metric label="Completate" value={completedCount} icon={<CheckCircle2 size={18} />} />
-        <Metric label="Prese in carico" value={assignedCount} icon={<UserCheck size={18} />} />
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <ViewButton
+            active={operationalView === 'today'}
+            onClick={() => setOperationalView('today')}
+          >
+            Oggi
+          </ViewButton>
+          <ViewButton
+            active={operationalView === 'next7'}
+            onClick={() => setOperationalView('next7')}
+          >
+            Prossimi 7 giorni
+          </ViewButton>
+          <ViewButton
+            active={operationalView === 'active'}
+            onClick={() => setOperationalView('active')}
+          >
+            Tutte le attive
+          </ViewButton>
+          <ViewButton
+            active={operationalView === 'history'}
+            onClick={() => setOperationalView('history')}
+          >
+            Storico e scadute
+          </ViewButton>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <label className="relative md:col-span-2">
             <Search
@@ -247,7 +320,9 @@ export default function AdminCallCenter() {
                     <p className="text-xs text-slate-500 max-w-48">{task.sourceName}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={task.status} />
+                    {isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)
+                      ? <ExpiredBadge beforeTracking={isTaskBeforeTrackingStart(task)} />
+                      : <StatusBadge status={task.status} />}
                   </td>
                   <td className="px-4 py-3 text-slate-700">
                     {task.assignedToName || 'Non assegnata'}
@@ -315,6 +390,30 @@ function Metric({
   );
 }
 
+function ViewButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-2 rounded-lg text-xs font-bold border ${
+        active
+          ? 'bg-[#003781] text-white border-[#003781]'
+          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Select({
   value,
   onChange,
@@ -349,8 +448,22 @@ function StatusBadge({ status }: { status: CallStatusId }) {
   return <span className={`inline-flex px-2 py-1 rounded text-xs font-bold ${className}`}>{label}</span>;
 }
 
+function ExpiredBadge({ beforeTracking }: { beforeTracking: boolean }) {
+  return (
+    <span className="inline-flex px-2 py-1 rounded text-xs font-bold bg-slate-200 text-slate-600">
+      {beforeTracking ? 'Precedente all’attivazione' : 'Finestra scaduta'}
+    </span>
+  );
+}
+
 function getStatusLabel(status: CallStatusId) {
   return CALL_STATUSES.find(item => item.id === status)?.label || status;
+}
+
+function getOperationalStatus(task: CallTask, today: string) {
+  if (isTaskBeforeTrackingStart(task)) return 'Precedente all’attivazione';
+  if (isTaskExpired(task, today)) return 'Finestra scaduta';
+  return getStatusLabel(task.status);
 }
 
 function formatDate(value: string) {

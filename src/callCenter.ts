@@ -19,6 +19,7 @@ import {
   doc,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getItalyDate } from './lib/utils';
 import {
   AUTHORIZED_EMPLOYEES,
 } from './constants';
@@ -107,6 +108,7 @@ type WorksheetLike = {
 };
 
 const DATE_FORMAT = 'yyyy-MM-dd';
+export const CALL_TRACKING_START_DATE = '2026-06-19';
 
 export async function parseClientWorkbook(
   file: File,
@@ -162,10 +164,22 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
   const existingSnapshot = await getDocs(
     query(collection(db, 'call_tasks'), where('importType', '==', parsed.kind))
   );
-  const existing = new Map(
+  const existingById = new Map(
     existingSnapshot.docs.map(item => [
       item.id,
-      item.data().sourceFingerprint as string | undefined,
+      {
+        id: item.id,
+        fingerprint: item.data().sourceFingerprint as string | undefined,
+      },
+    ])
+  );
+  const existingByLogicalKey = new Map(
+    existingSnapshot.docs.map(item => [
+      getTaskLogicalKey(item.data() as Partial<CallTask>),
+      {
+        id: item.id,
+        fingerprint: item.data().sourceFingerprint as string | undefined,
+      },
     ])
   );
 
@@ -183,14 +197,16 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
   };
 
   for (const task of parsed.tasks) {
-    const previousFingerprint = existing.get(task.id);
+    const existingTask = existingById.get(task.id) ||
+      existingByLogicalKey.get(getTaskLogicalKey(task));
+    const previousFingerprint = existingTask?.fingerprint;
 
     if (previousFingerprint === task.sourceFingerprint) {
       unchanged += 1;
       continue;
     }
 
-    const taskRef = doc(db, 'call_tasks', task.id);
+    const taskRef = doc(db, 'call_tasks', existingTask?.id || task.id);
     const storedTask = removeUndefined({
       ...task,
       importedAt: serverTimestamp(),
@@ -233,6 +249,33 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
   return result;
 }
 
+function getTaskLogicalKey(task: Partial<CallTask>): string {
+  if (task.importType === 'expirations') {
+    return [
+      task.importType,
+      task.policyNumber,
+      task.expirationType,
+      task.eventDate,
+    ].join('|');
+  }
+
+  if (task.importType === 'winback') {
+    return [
+      task.importType,
+      task.policyNumber,
+      task.exitDate,
+    ].join('|');
+  }
+
+  return [
+    task.importType,
+    task.campaignId,
+    task.clientName,
+    task.birthDate,
+    task.sourceCode,
+  ].join('|');
+}
+
 export function adjustWeekendToMonday(date: Date): Date {
   const day = date.getDay();
   if (day === 6) return addDays(date, 2);
@@ -252,6 +295,29 @@ export function isTaskClosed(status: CallStatusId): boolean {
     'cambio_rottamazione_macchina',
     'cliente_perso',
   ].includes(status);
+}
+
+export function isTaskExpired(
+  task: CallTask,
+  referenceDate = getItalyDate(),
+): boolean {
+  return !isTaskClosed(task.status) && task.eventDate < referenceDate;
+}
+
+export function isTaskBeforeTrackingStart(task: CallTask): boolean {
+  return !isTaskClosed(task.status) &&
+    getTaskEffectiveDate(task) < CALL_TRACKING_START_DATE;
+}
+
+export function isTaskActionable(
+  task: CallTask,
+  referenceDate = getItalyDate(),
+): boolean {
+  const effectiveDate = getTaskEffectiveDate(task);
+  return !isTaskClosed(task.status) &&
+    !isTaskBeforeTrackingStart(task) &&
+    effectiveDate <= referenceDate &&
+    task.eventDate >= referenceDate;
 }
 
 function buildTasksForRow(
@@ -338,7 +404,11 @@ function buildExpirationTask(
     return undefined;
   }
 
-  const eventDate = addMonths(baseDate, expirationRule.monthsToAdd);
+  const eventDate = getNextExpirationEvent(
+    baseDate,
+    expirationRule.monthsToAdd,
+    parseISO(getItalyDate()),
+  );
   const dueDate = adjustWeekendToMonday(
     subDays(eventDate, config.scheduleRule.reminderDays)
   );
@@ -346,7 +416,7 @@ function buildExpirationTask(
     'expiration',
     policyNumber,
     expirationType,
-    format(baseDate, DATE_FORMAT),
+    format(eventDate, DATE_FORMAT),
   ].join('|');
 
   return createTask({
@@ -364,6 +434,20 @@ function buildExpirationTask(
     eventDate: format(eventDate, DATE_FORMAT),
     dueDate: format(dueDate, DATE_FORMAT),
   });
+}
+
+export function getNextExpirationEvent(
+  baseDate: Date,
+  monthsToAdd: number,
+  referenceDate: Date,
+): Date {
+  let eventDate = addMonths(baseDate, monthsToAdd);
+
+  while (eventDate < referenceDate) {
+    eventDate = addMonths(eventDate, monthsToAdd);
+  }
+
+  return eventDate;
 }
 
 function buildWinbackTask(
