@@ -41,9 +41,11 @@ import {
   isTaskBeforeTrackingStart,
   isTaskClosed,
   isTaskExpired,
+  CallCategory,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { getItalyDate } from '../lib/utils';
+import CallCategoryFilter from './CallCategoryFilter';
 
 type SourceMode = 'mine' | 'help';
 
@@ -55,7 +57,7 @@ export default function EmployeeCallCalendar() {
   const [sourceMode, setSourceMode] = useState<SourceMode>('mine');
   const [selectedHelpSources, setSelectedHelpSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('all');
+  const [selectedCategories, setSelectedCategories] = useState<CallCategory[]>([]);
   const [savingTaskId, setSavingTaskId] = useState('');
   const [callbackTaskId, setCallbackTaskId] = useState('');
   const [callbackDate, setCallbackDate] = useState('');
@@ -159,7 +161,7 @@ export default function EmployeeCallCalendar() {
 
         return (isSelectedDay || isOverdue) &&
           matchesSearch &&
-          (category === 'all' || task.category === category);
+          (selectedCategories.length === 0 || selectedCategories.includes(task.category));
       })
       .sort((first, second) => {
         const firstDate = getTaskEffectiveDate(first);
@@ -168,7 +170,7 @@ export default function EmployeeCallCalendar() {
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
       });
-  }, [modeTasks, selectedDate, today, search, category]);
+  }, [modeTasks, selectedDate, today, search, selectedCategories]);
 
   const overdueCount = modeTasks.filter(task =>
     getTaskEffectiveDate(task) < today && isTaskActionable(task, today)
@@ -459,17 +461,10 @@ export default function EmployeeCallCalendar() {
                     className="w-full sm:w-56 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
                   />
                 </label>
-                <select
-                  value={category}
-                  onChange={event => setCategory(event.target.value)}
-                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#003781]"
-                >
-                  <option value="all">Tutte le categorie</option>
-                  <option value="campagna">Campagne</option>
-                  <option value="scadenza_rata">Scadenze rata</option>
-                  <option value="scadenza_annuale">Scadenze annuali</option>
-                  <option value="winback">Winback</option>
-                </select>
+                <CallCategoryFilter
+                  selected={selectedCategories}
+                  onChange={setSelectedCategories}
+                />
               </div>
             </div>
 

@@ -18,10 +18,12 @@ import {
   isTaskBeforeTrackingStart,
   isTaskClosed,
   isTaskExpired,
+  CallCategory,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 import { getItalyDate } from '../lib/utils';
+import CallCategoryFilter from './CallCategoryFilter';
 
 const PAGE_SIZE = 100;
 type OperationalView = 'today' | 'next7' | 'active' | 'history';
@@ -31,7 +33,7 @@ export default function AdminCallCenter() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<CallStatusId | 'all'>('all');
-  const [category, setCategory] = useState('all');
+  const [selectedCategories, setSelectedCategories] = useState<CallCategory[]>([]);
   const [source, setSource] = useState('all');
   const [assignee, setAssignee] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -96,7 +98,7 @@ export default function AdminCallCenter() {
 
         return matchesSearch && matchesOperationalView &&
           (status === 'all' || task.status === status) &&
-          (category === 'all' || task.category === category) &&
+          (selectedCategories.length === 0 || selectedCategories.includes(task.category)) &&
           (source === 'all' || task.sourceCode === source) &&
           (assignee === 'all' || task.assignedToName === assignee) &&
           (!startDate || effectiveDate >= startDate) &&
@@ -112,7 +114,7 @@ export default function AdminCallCenter() {
     tasks,
     search,
     status,
-    category,
+    selectedCategories,
     source,
     assignee,
     startDate,
@@ -125,7 +127,7 @@ export default function AdminCallCenter() {
   useEffect(() => setPage(1), [
     search,
     status,
-    category,
+    selectedCategories,
     source,
     assignee,
     startDate,
@@ -249,13 +251,10 @@ export default function AdminCallCenter() {
             ))}
           </Select>
 
-          <Select value={category} onChange={setCategory}>
-            <option value="all">Tutte le categorie</option>
-            <option value="campagna">Campagne</option>
-            <option value="scadenza_rata">Scadenze rata</option>
-            <option value="scadenza_annuale">Scadenze annuali</option>
-            <option value="winback">Winback</option>
-          </Select>
+          <CallCategoryFilter
+            selected={selectedCategories}
+            onChange={setSelectedCategories}
+          />
 
           <Select value={source} onChange={setSource}>
             <option value="all">Tutte le fonti</option>
