@@ -41,11 +41,13 @@ import {
   isTaskBeforeTrackingStart,
   isTaskClosed,
   isTaskExpired,
-  CallCategory,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { getItalyDate } from '../lib/utils';
-import CallCategoryFilter from './CallCategoryFilter';
+import CallCategoryFilter, {
+  CallCategorySelection,
+  CampaignFilterOption,
+} from './CallCategoryFilter';
 
 type SourceMode = 'mine' | 'help';
 
@@ -57,7 +59,7 @@ export default function EmployeeCallCalendar() {
   const [sourceMode, setSourceMode] = useState<SourceMode>('mine');
   const [selectedHelpSources, setSelectedHelpSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<CallCategory[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<CallCategorySelection[]>([]);
   const [savingTaskId, setSavingTaskId] = useState('');
   const [callbackTaskId, setCallbackTaskId] = useState('');
   const [callbackDate, setCallbackDate] = useState('');
@@ -127,6 +129,20 @@ export default function EmployeeCallCalendar() {
     selectedHelpSources,
   ]);
 
+  const campaignOptions = useMemo<CampaignFilterOption[]>(() => [
+    ...new Map(
+      tasks
+        .filter(task => task.category === 'campagna' && task.campaignId)
+        .map(task => [
+          task.campaignId as string,
+          {
+            id: task.campaignId as string,
+            label: task.campaignName || task.categoryLabel,
+          },
+        ])
+    ).values(),
+  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [tasks]);
+
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
     const end = endOfWeek(endOfMonth(visibleMonth), { weekStartsOn: 1 });
@@ -136,13 +152,14 @@ export default function EmployeeCallCalendar() {
   const countsByDate = useMemo(() => {
     const counts = new Map<string, number>();
     modeTasks.forEach(task => {
+      if (!matchesCategorySelection(task, selectedCategories)) return;
       let date = getTaskEffectiveDate(task);
       if (!date || isTaskClosed(task.status)) return;
       if (isTaskActionable(task, today)) date = today;
       counts.set(date, (counts.get(date) || 0) + 1);
     });
     return counts;
-  }, [modeTasks, today]);
+  }, [modeTasks, today, selectedCategories]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -161,7 +178,7 @@ export default function EmployeeCallCalendar() {
 
         return (isSelectedDay || isOverdue) &&
           matchesSearch &&
-          (selectedCategories.length === 0 || selectedCategories.includes(task.category));
+          matchesCategorySelection(task, selectedCategories);
       })
       .sort((first, second) => {
         const firstDate = getTaskEffectiveDate(first);
@@ -464,6 +481,7 @@ export default function EmployeeCallCalendar() {
                 <CallCategoryFilter
                   selected={selectedCategories}
                   onChange={setSelectedCategories}
+                  campaigns={campaignOptions}
                 />
               </div>
             </div>
@@ -618,6 +636,22 @@ export default function EmployeeCallCalendar() {
       </section>
     </div>
   );
+}
+
+function matchesCategorySelection(
+  task: CallTask,
+  selected: CallCategorySelection[],
+): boolean {
+  if (selected.length === 0) return true;
+  if (task.category !== 'campagna') {
+    return selected.includes(task.category);
+  }
+
+  return selected.includes('campagna') ||
+    Boolean(
+      task.campaignId &&
+      selected.includes(`campaign:${task.campaignId}`)
+    );
 }
 
 function adjustSuggestedCallback(selectedDate: string, today: string) {

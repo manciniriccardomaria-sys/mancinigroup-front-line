@@ -2,8 +2,19 @@ import React from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { CallCategory } from '../callCenter';
 
-const CATEGORY_OPTIONS: Array<{ id: CallCategory; label: string }> = [
-  { id: 'campagna', label: 'Campagne' },
+export type CallCategorySelection =
+  | CallCategory
+  | `campaign:${string}`;
+
+export type CampaignFilterOption = {
+  id: string;
+  label: string;
+};
+
+const CATEGORY_OPTIONS: Array<{
+  id: CallCategorySelection;
+  label: string;
+}> = [
   { id: 'scadenza_rata', label: 'Scadenze rata' },
   { id: 'scadenza_annuale', label: 'Scadenze annuali' },
   { id: 'winback', label: 'Winback' },
@@ -12,14 +23,23 @@ const CATEGORY_OPTIONS: Array<{ id: CallCategory; label: string }> = [
 export default function CallCategoryFilter({
   selected,
   onChange,
+  campaigns = [],
 }: {
-  selected: CallCategory[];
-  onChange: (selected: CallCategory[]) => void;
+  selected: CallCategorySelection[];
+  onChange: (selected: CallCategorySelection[]) => void;
+  campaigns?: CampaignFilterOption[];
 }) {
+  const campaignOptions = campaigns.length > 0
+    ? campaigns.map(campaign => ({
+        id: `campaign:${campaign.id}` as CallCategorySelection,
+        label: campaign.label,
+      }))
+    : [{ id: 'campagna' as CallCategorySelection, label: 'Campagne' }];
+  const options = [...campaignOptions, ...CATEGORY_OPTIONS];
   const label = selected.length === 0
     ? 'Tutte le categorie'
     : selected.length === 1
-      ? CATEGORY_OPTIONS.find(option => option.id === selected[0])?.label
+      ? options.find(option => option.id === selected[0])?.label
       : `${selected.length} categorie`;
 
   return (
@@ -44,6 +64,44 @@ export default function CallCategoryFilter({
         </button>
 
         <div className="my-1 border-t border-slate-100" />
+
+        {campaignOptions.length > 0 && (
+          <p className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase text-slate-400">
+            Campagne
+          </p>
+        )}
+
+        {campaignOptions.map(option => {
+          const checked = selected.includes(option.id);
+
+          return (
+            <label
+              key={option.id}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm ${
+                checked
+                  ? 'bg-blue-50 text-[#003781] font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onChange(
+                  checked
+                    ? selected.filter(category => category !== option.id)
+                    : [...selected, option.id]
+                )}
+                className="w-4 h-4 accent-[#003781]"
+              />
+              {option.label}
+            </label>
+          );
+        })}
+
+        <div className="my-1 border-t border-slate-100" />
+        <p className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase text-slate-400">
+          Altre categorie
+        </p>
 
         {CATEGORY_OPTIONS.map(option => {
           const checked = selected.includes(option.id);

@@ -25,6 +25,7 @@ import {
   ImportKind,
   importCallTasks,
   parseClientWorkbook,
+  syncCampaignTasks,
 } from '../callCenter';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
 
@@ -70,6 +71,7 @@ export default function AdminImportPanel() {
   const [campaignDraft, setCampaignDraft] = useState<CampaignDraft>(EMPTY_CAMPAIGN);
   const [savingCampaign, setSavingCampaign] = useState(false);
   const [campaignError, setCampaignError] = useState('');
+  const [campaignMessage, setCampaignMessage] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Partial<Record<ImportKind, File>>>({});
   const [importingKind, setImportingKind] = useState<ImportKind | null>(null);
   const [importMessages, setImportMessages] = useState<Partial<Record<ImportKind, string>>>({});
@@ -92,6 +94,7 @@ export default function AdminImportPanel() {
   const saveCampaign = async (event: React.FormEvent) => {
     event.preventDefault();
     setCampaignError('');
+    setCampaignMessage('');
 
     const monthsAfterStart = Number(campaignDraft.monthsAfterStart);
     if (!campaignDraft.name.trim() || !Number.isInteger(monthsAfterStart) || monthsAfterStart < 1) {
@@ -117,15 +120,28 @@ export default function AdminImportPanel() {
         updatedAt: serverTimestamp(),
       };
 
-      if (campaignDraft.id) {
+      let campaignId = campaignDraft.id;
+      if (campaignId) {
         await setDoc(doc(db, 'campaigns', campaignDraft.id), payload, { merge: true });
       } else {
-        await addDoc(collection(db, 'campaigns'), {
+        const campaignRef = await addDoc(collection(db, 'campaigns'), {
           ...payload,
           createdAt: serverTimestamp(),
         });
+        campaignId = campaignRef.id;
       }
 
+      const result = await syncCampaignTasks({
+        id: campaignId,
+        ...payload,
+      });
+      setCampaignMessage(
+        campaignDraft.active
+          ? result.totalRows > 0
+            ? `Campagna salvata: ${result.created} chiamate create, ${result.updated} aggiornate e ${result.unchanged} già presenti.`
+            : 'Campagna salvata. Importa il file Nuovi clienti per generare le chiamate.'
+          : 'Campagna salvata come disattivata.'
+      );
       setCampaignDraft(EMPTY_CAMPAIGN);
     } catch (error) {
       console.error('Error saving campaign:', error);
@@ -167,6 +183,9 @@ export default function AdminImportPanel() {
           `${result.created} nuove`,
           `${result.updated} aggiornate`,
           `${result.unchanged} invariate`,
+          ...(kind === 'newClients'
+            ? [`${result.storedClients} clienti memorizzati o aggiornati`]
+            : []),
           `${result.skippedRows} righe saltate`,
         ].join(' · '),
       }));
@@ -319,6 +338,11 @@ export default function AdminImportPanel() {
             </label>
 
             {campaignError && <p className="text-sm text-red-600">{campaignError}</p>}
+            {campaignMessage && (
+              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                {campaignMessage}
+              </p>
+            )}
 
             <button
               type="submit"
@@ -336,7 +360,8 @@ export default function AdminImportPanel() {
         <div className="mb-4">
           <h3 className="font-bold text-slate-800">Importazione Excel</h3>
           <p className="text-sm text-slate-500">
-            I file vengono letti nel browser e trasferiti direttamente nel database protetto.
+            I nuovi clienti restano memorizzati: le campagne create in seguito
+            generano automaticamente le relative chiamate.
           </p>
         </div>
 

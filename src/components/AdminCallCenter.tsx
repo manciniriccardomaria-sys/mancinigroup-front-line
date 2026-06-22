@@ -18,12 +18,14 @@ import {
   isTaskBeforeTrackingStart,
   isTaskClosed,
   isTaskExpired,
-  CallCategory,
 } from '../callCenter';
 import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 import { getItalyDate } from '../lib/utils';
-import CallCategoryFilter from './CallCategoryFilter';
+import CallCategoryFilter, {
+  CallCategorySelection,
+  CampaignFilterOption,
+} from './CallCategoryFilter';
 
 const PAGE_SIZE = 100;
 type OperationalView = 'today' | 'next7' | 'active' | 'history';
@@ -33,7 +35,7 @@ export default function AdminCallCenter() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<CallStatusId | 'all'>('all');
-  const [selectedCategories, setSelectedCategories] = useState<CallCategory[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<CallCategorySelection[]>([]);
   const [source, setSource] = useState('all');
   const [assignee, setAssignee] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -69,6 +71,20 @@ export default function AdminCallCenter() {
     [tasks]
   );
 
+  const campaignOptions = useMemo<CampaignFilterOption[]>(() => [
+    ...new Map(
+      tasks
+        .filter(task => task.category === 'campagna' && task.campaignId)
+        .map(task => [
+          task.campaignId as string,
+          {
+            id: task.campaignId as string,
+            label: task.campaignName || task.categoryLabel,
+          },
+        ])
+    ).values(),
+  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [tasks]);
+
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -98,7 +114,7 @@ export default function AdminCallCenter() {
 
         return matchesSearch && matchesOperationalView &&
           (status === 'all' || task.status === status) &&
-          (selectedCategories.length === 0 || selectedCategories.includes(task.category)) &&
+          matchesCategorySelection(task, selectedCategories) &&
           (source === 'all' || task.sourceCode === source) &&
           (assignee === 'all' || task.assignedToName === assignee) &&
           (!startDate || effectiveDate >= startDate) &&
@@ -254,6 +270,7 @@ export default function AdminCallCenter() {
           <CallCategoryFilter
             selected={selectedCategories}
             onChange={setSelectedCategories}
+            campaigns={campaignOptions}
           />
 
           <Select value={source} onChange={setSource}>
@@ -485,6 +502,22 @@ function getOperationalStatus(task: CallTask, today: string) {
   if (isTaskBeforeTrackingStart(task)) return 'Precedente all’attivazione';
   if (isTaskExpired(task, today)) return 'Finestra scaduta';
   return getStatusLabel(task.status);
+}
+
+function matchesCategorySelection(
+  task: CallTask,
+  selected: CallCategorySelection[],
+): boolean {
+  if (selected.length === 0) return true;
+  if (task.category !== 'campagna') {
+    return selected.includes(task.category);
+  }
+
+  return selected.includes('campagna') ||
+    Boolean(
+      task.campaignId &&
+      selected.includes(`campaign:${task.campaignId}`)
+    );
 }
 
 function formatDate(value: string) {

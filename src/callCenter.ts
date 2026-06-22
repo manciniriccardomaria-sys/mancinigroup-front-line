@@ -81,6 +81,22 @@ export type CallTask = {
   sourceFingerprint: string;
 };
 
+export type NewClientRecord = {
+  id: string;
+  clientName: string;
+  phone: string;
+  sourceCode: string;
+  sourceName: string;
+  sourceOwnerEmail: string;
+  sourceOwnerName: string;
+  coverages: string;
+  birthDate: string;
+  relationshipStartDate: string;
+  sourceFingerprint: string;
+  importedAt?: unknown;
+  createdAt?: unknown;
+};
+
 export type ParsedImport = {
   kind: ImportKind;
   fileName: string;
@@ -88,6 +104,7 @@ export type ParsedImport = {
   rowCount: number;
   skippedRows: number;
   tasks: Array<Omit<CallTask, 'status' | 'id'> & { id: string }>;
+  newClients?: NewClientRecord[];
 };
 
 export type ImportResult = {
@@ -97,6 +114,7 @@ export type ImportResult = {
   skippedRows: number;
   totalRows: number;
   generatedTasks: number;
+  storedClients: number;
 };
 
 type WorksheetLike = {
@@ -127,19 +145,32 @@ export async function parseClientWorkbook(
     throw new Error(`Scheda "${config.sheetName}" non trovata nel file.`);
   }
 
-  if (kind === 'newClients' && campaigns.filter(item => item.active).length === 0) {
-    throw new Error('Crea almeno una campagna attiva prima di importare i nuovi clienti.');
-  }
-
   const tasks: ParsedImport['tasks'] = [];
+  const newClients: NewClientRecord[] = [];
+  const activeCampaigns = campaigns.filter(item => item.active);
   let skippedRows = 0;
 
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    if (kind === 'newClients') {
+      const client = buildNewClientRecord(
+        worksheet as WorksheetLike,
+        rowNumber,
+      );
+
+      if (!client) {
+        skippedRows += 1;
+        continue;
+      }
+
+      newClients.push(client);
+      tasks.push(...buildCampaignTasksForClient(client, activeCampaigns));
+      continue;
+    }
+
     const generated = buildTasksForRow(
       worksheet as WorksheetLike,
       rowNumber,
       kind,
-      campaigns.filter(item => item.active),
     );
 
     if (generated.length === 0) {
@@ -157,10 +188,14 @@ export async function parseClientWorkbook(
     rowCount: Math.max(0, worksheet.rowCount - 1),
     skippedRows,
     tasks,
+    ...(kind === 'newClients' ? { newClients } : {}),
   };
 }
 
 export async function importCallTasks(parsed: ParsedImport): Promise<ImportResult> {
+  const storedClients = parsed.newClients
+    ? await importNewClientRecords(parsed.newClients)
+    : 0;
   const existingSnapshot = await getDocs(
     query(collection(db, 'call_tasks'), where('importType', '==', parsed.kind))
   );
@@ -236,6 +271,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     skippedRows: parsed.skippedRows,
     totalRows: parsed.rowCount,
     generatedTasks: parsed.tasks.length,
+    storedClients,
   };
 
   await addDoc(collection(db, 'import_runs'), {
@@ -247,6 +283,82 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
   });
 
   return result;
+}
+
+export async function syncCampaignTasks(
+  campaign: Campaign,
+): Promise<ImportResult> {
+  if (!campaign.active) {
+    return {
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      skippedRows: 0,
+      totalRows: 0,
+      generatedTasks: 0,
+      storedClients: 0,
+    };
+  }
+
+  const clientsSnapshot = await getDocs(collection(db, 'new_clients'));
+  const clients = clientsSnapshot.docs.map(item => ({
+    id: item.id,
+    ...item.data(),
+  } as NewClientRecord));
+
+  return importCallTasks({
+    kind: 'newClients',
+    fileName: 'Clienti memorizzati',
+    sheetName: CLIENT_IMPORT_CONFIG.newClients.sheetName,
+    rowCount: clients.length,
+    skippedRows: 0,
+    tasks: clients.flatMap(client =>
+      buildCampaignTasksForClient(client, [campaign])
+    ),
+  });
+}
+
+async function importNewClientRecords(
+  clients: NewClientRecord[],
+): Promise<number> {
+  const existingSnapshot = await getDocs(collection(db, 'new_clients'));
+  const existingById = new Map(
+    existingSnapshot.docs.map(item => [
+      item.id,
+      item.data().sourceFingerprint as string | undefined,
+    ])
+  );
+
+  let storedClients = 0;
+  let batch = writeBatch(db);
+  let batchSize = 0;
+
+  const commitBatch = async () => {
+    if (batchSize === 0) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    batchSize = 0;
+  };
+
+  for (const client of clients) {
+    const previousFingerprint = existingById.get(client.id);
+    if (previousFingerprint === client.sourceFingerprint) continue;
+
+    batch.set(doc(db, 'new_clients', client.id), {
+      ...client,
+      importedAt: serverTimestamp(),
+      ...(previousFingerprint === undefined
+        ? { createdAt: serverTimestamp() }
+        : {}),
+    }, { merge: true });
+    batchSize += 1;
+    storedClients += 1;
+
+    if (batchSize >= 400) await commitBatch();
+  }
+
+  await commitBatch();
+  return storedClients;
 }
 
 function getTaskLogicalKey(task: Partial<CallTask>): string {
@@ -324,12 +436,7 @@ function buildTasksForRow(
   worksheet: WorksheetLike,
   rowNumber: number,
   kind: ImportKind,
-  campaigns: Campaign[],
 ): ParsedImport['tasks'] {
-  if (kind === 'newClients') {
-    return buildNewClientTasks(worksheet, rowNumber, campaigns);
-  }
-
   if (kind === 'expirations') {
     const task = buildExpirationTask(worksheet, rowNumber);
     return task ? [task] : [];
@@ -339,27 +446,57 @@ function buildTasksForRow(
   return task ? [task] : [];
 }
 
-function buildNewClientTasks(
+function buildNewClientRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
-  campaigns: Campaign[],
-): ParsedImport['tasks'] {
+): NewClientRecord | undefined {
   const columns = CLIENT_IMPORT_CONFIG.newClients.columns;
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
   const startDate = getCellDate(worksheet, rowNumber, columns.relationshipStartDate);
   const birthDate = getCellDate(worksheet, rowNumber, columns.birthDate);
 
-  if (!clientName || !source.code || !startDate) return [];
+  if (!clientName || !source.code || !startDate) return undefined;
 
+  const identity = [
+    'new-client',
+    clientName,
+    birthDate ? format(birthDate, DATE_FORMAT) : '',
+    source.code,
+  ].join('|');
+  const baseClient = {
+    id: `new_client_${stableHash(identity)}`,
+    clientName,
+    phone: getCellText(worksheet, rowNumber, columns.phone),
+    sourceCode: source.code,
+    sourceName: source.name,
+    sourceOwnerEmail: source.ownerEmail,
+    sourceOwnerName: source.ownerName,
+    coverages: getCellText(worksheet, rowNumber, columns.coverages),
+    birthDate: birthDate ? format(birthDate, DATE_FORMAT) : '',
+    relationshipStartDate: format(startDate, DATE_FORMAT),
+  };
+
+  return {
+    ...baseClient,
+    sourceFingerprint: stableHash(JSON.stringify(baseClient)),
+  };
+}
+
+function buildCampaignTasksForClient(
+  client: NewClientRecord,
+  campaigns: Campaign[],
+): ParsedImport['tasks'] {
   return campaigns.map(campaign => {
-    const eventDate = addMonths(startDate, campaign.monthsAfterStart);
-    const dueDate = adjustWeekendToMonday(eventDate);
+    const startDate = parseISO(client.relationshipStartDate);
+    const eventDate = adjustWeekendToMonday(
+      addMonths(startDate, campaign.monthsAfterStart)
+    );
     const identity = [
       'campaign',
-      clientName,
-      birthDate ? format(birthDate, DATE_FORMAT) : '',
-      source.code,
+      client.clientName,
+      client.birthDate,
+      client.sourceCode,
       campaign.id,
     ].join('|');
     const id = `campaign_${stableHash(identity)}`;
@@ -371,14 +508,19 @@ function buildNewClientTasks(
       categoryLabel: campaign.name,
       campaignId: campaign.id,
       campaignName: campaign.name,
-      clientName,
-      phone: getCellText(worksheet, rowNumber, columns.phone),
-      source,
-      coverages: getCellText(worksheet, rowNumber, columns.coverages),
-      birthDate: birthDate ? format(birthDate, DATE_FORMAT) : '',
-      relationshipStartDate: format(startDate, DATE_FORMAT),
+      clientName: client.clientName,
+      phone: client.phone,
+      source: {
+        code: client.sourceCode,
+        name: client.sourceName,
+        ownerEmail: client.sourceOwnerEmail,
+        ownerName: client.sourceOwnerName,
+      },
+      coverages: client.coverages,
+      birthDate: client.birthDate,
+      relationshipStartDate: client.relationshipStartDate,
       eventDate: format(eventDate, DATE_FORMAT),
-      dueDate: format(dueDate, DATE_FORMAT),
+      dueDate: format(eventDate, DATE_FORMAT),
     });
   });
 }
