@@ -112,6 +112,51 @@ service cloud.firestore {
         data.active is bool;
     }
 
+    function isValidNotice(data) {
+      return data.keys().hasAll([
+        'title',
+        'body',
+        'active',
+        'createdBy'
+      ]) &&
+        data.title is string &&
+        data.title.size() > 0 && data.title.size() <= 120 &&
+        data.body is string &&
+        data.body.size() > 0 && data.body.size() <= 3000 &&
+        data.active is bool &&
+        data.createdBy is string &&
+        data.createdBy.size() > 0 && data.createdBy.size() < 150;
+    }
+
+    function isValidDailyObjectives(data) {
+      return data.keys().hasAll(['enabled']) &&
+        data.enabled is bool &&
+        (!('updatedBy' in data) ||
+          data.updatedBy is string && data.updatedBy.size() < 150) &&
+        (!('incassi' in data) || data.incassi is int && data.incassi >= 0) &&
+        (!('recensioni' in data) || data.recensioni is int && data.recensioni >= 0) &&
+        (!('prevMotorSe' in data) || data.prevMotorSe is int && data.prevMotorSe >= 0) &&
+        (!('prevMotorTerzi' in data) || data.prevMotorTerzi is int && data.prevMotorTerzi >= 0) &&
+        (!('prevRetailSe' in data) || data.prevRetailSe is int && data.prevRetailSe >= 0) &&
+        (!('prevRetailTerzi' in data) || data.prevRetailTerzi is int && data.prevRetailTerzi >= 0) &&
+        (!('emissMotorSe' in data) || data.emissMotorSe is int && data.emissMotorSe >= 0) &&
+        (!('emissRetailSe' in data) || data.emissRetailSe is int && data.emissRetailSe >= 0) &&
+        (!('infoVarie' in data) || data.infoVarie is int && data.infoVarie >= 0) &&
+        (!('smeg' in data) || data.smeg is int && data.smeg >= 0) &&
+        (!('vitarivConsegna' in data) || data.vitarivConsegna is int && data.vitarivConsegna >= 0) &&
+        (!('longevityCare' in data) || data.longevityCare is int && data.longevityCare >= 0) &&
+        (!('winbackMag25' in data) || data.winbackMag25 is int && data.winbackMag25 >= 0) &&
+        (!('scegliAllianzGen26' in data) || data.scegliAllianzGen26 is int && data.scegliAllianzGen26 >= 0) &&
+        (!('scegliAllianzConsegna' in data) || data.scegliAllianzConsegna is int && data.scegliAllianzConsegna >= 0) &&
+        (!('sinistriMotor' in data) || data.sinistriMotor is int && data.sinistriMotor >= 0) &&
+        (!('sinistriRetail' in data) || data.sinistriRetail is int && data.sinistriRetail >= 0) &&
+        (!('midCorporate' in data) || data.midCorporate is int && data.midCorporate >= 0) &&
+        (!('contattiFondoPensione' in data) || data.contattiFondoPensione is int && data.contattiFondoPensione >= 0) &&
+        (!('contattiProtection' in data) || data.contattiProtection is int && data.contattiProtection >= 0) &&
+        (!('contattiEnergia' in data) || data.contattiEnergia is int && data.contattiEnergia >= 0) &&
+        (!('contattiNoleggio' in data) || data.contattiNoleggio is int && data.contattiNoleggio >= 0);
+    }
+
     function isValidCallTask(data) {
       return data.keys().hasAll([
         'importType',
@@ -237,6 +282,21 @@ service cloud.firestore {
     match /campaigns/{campaignId} {
       allow read: if isApprovedUserEmail();
       allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /notices/{noticeId} {
+      allow read: if isApprovedUserEmail();
+      allow create, update: if isAdmin() &&
+        isValidNotice(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /daily_objectives/{objectiveId} {
+      allow read: if isApprovedUserEmail();
+      allow create, update: if isAdmin() &&
+        objectiveId == 'current' &&
+        isValidDailyObjectives(request.resource.data);
       allow delete: if isAdmin();
     }
 

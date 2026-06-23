@@ -26,7 +26,9 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Megaphone,
+  Target,
 } from 'lucide-react';
 import { FileUp, PhoneCall } from 'lucide-react';
 import { 
@@ -59,9 +61,18 @@ import {
 import { it } from 'date-fns/locale';
 import AdminImportPanel from './AdminImportPanel';
 import AdminCallCenter from './AdminCallCenter';
+import AdminDailyObjectives from './AdminDailyObjectives';
+import AdminNotices from './AdminNotices';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 
-type Tab = 'overview' | 'dettaglio_fl' | 'storico' | 'chiamate' | 'importazioni';
+type Tab =
+  | 'overview'
+  | 'dettaglio_fl'
+  | 'storico'
+  | 'obiettivi'
+  | 'avvisi'
+  | 'chiamate'
+  | 'importazioni';
 type TimeRange = 'day' | 'week' | 'month' | 'custom';
 
 export default function AdminDashboard() {
@@ -382,6 +393,18 @@ export default function AdminDashboard() {
             label="Storico"
           />
           <NavItem
+            active={selectedTab === 'obiettivi'}
+            onClick={() => setSelectedTab('obiettivi')}
+            icon={<Target size={20} />}
+            label="Rendicontazione"
+          />
+          <NavItem
+            active={selectedTab === 'avvisi'}
+            onClick={() => setSelectedTab('avvisi')}
+            icon={<Megaphone size={20} />}
+            label="Avvisi"
+          />
+          <NavItem
             active={selectedTab === 'chiamate'}
             onClick={() => setSelectedTab('chiamate')}
             icon={<PhoneCall size={20} />}
@@ -416,6 +439,8 @@ export default function AdminDashboard() {
                 {selectedTab === 'overview' && 'Panoramica Agenzia'}
                 {selectedTab === 'dettaglio_fl' && 'Dettaglio Front Line'}
                 {selectedTab === 'storico' && 'Analisi Storica'}
+                {selectedTab === 'obiettivi' && 'Rendicontazione Giornaliera'}
+                {selectedTab === 'avvisi' && 'Avvisi Front Line'}
                 {selectedTab === 'chiamate' && 'Monitoraggio Chiamate'}
                 {selectedTab === 'importazioni' && 'Importazioni e Campagne'}
               </h2>
@@ -806,6 +831,10 @@ export default function AdminDashboard() {
           {selectedTab === 'chiamate' && <AdminCallCenter />}
 
           {selectedTab === 'importazioni' && <AdminImportPanel />}
+
+          {selectedTab === 'obiettivi' && <AdminDailyObjectives />}
+
+          {selectedTab === 'avvisi' && <AdminNotices />}
         </div>
       </main>
     </div>

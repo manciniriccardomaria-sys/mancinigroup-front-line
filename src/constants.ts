@@ -106,10 +106,33 @@ export type DailyReport = {
   date: string;
 } & Record<CategoryId, number> & Partial<Record<LegacyCategoryId, number>>;
 
+export type DailyObjectives = {
+  enabled: boolean;
+  updatedBy?: string;
+  updatedAt?: unknown;
+} & Record<CategoryId, number>;
+
+export type Notice = {
+  id: string;
+  title: string;
+  body: string;
+  active: boolean;
+  createdBy: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 export function createEmptyCategoryCounts(): Record<CategoryId, number> {
   return Object.fromEntries(
     CATEGORIES.map(category => [category.id, 0])
   ) as Record<CategoryId, number>;
+}
+
+export function createEmptyDailyObjectives(): DailyObjectives {
+  return {
+    enabled: false,
+    ...createEmptyCategoryCounts(),
+  };
 }
 
 export function getReportCategoryValue(

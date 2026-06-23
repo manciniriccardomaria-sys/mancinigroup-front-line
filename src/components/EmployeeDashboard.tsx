@@ -3,9 +3,13 @@ import { auth, db } from '../firebase';
 import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import {
   CATEGORY_SECTIONS,
+  CATEGORIES,
   DailyReport,
+  DailyObjectives,
   CategoryId,
   createEmptyCategoryCounts,
+  createEmptyDailyObjectives,
+  getReportCategoryValue,
 } from '../constants';
 import { getItalyDate } from '../lib/utils';
 import { 
@@ -15,19 +19,25 @@ import {
   Calendar, 
   CalendarDays,
   ClipboardList,
+  Megaphone,
+  Target,
   User as UserIcon,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
 import EmployeeCallCalendar from './EmployeeCallCalendar';
+import EmployeeNotices from './EmployeeNotices';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [objectives, setObjectives] = useState<DailyObjectives>(
+    createEmptyDailyObjectives
+  );
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
-  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('report');
+  const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'notices'>('report');
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -96,6 +106,19 @@ export default function EmployeeDashboard() {
       unsubscribe?.();
     };
   }, [today]);
+
+  useEffect(() => onSnapshot(
+    doc(db, 'daily_objectives', 'current'),
+    snapshot => {
+      const stored = snapshot.exists()
+        ? snapshot.data() as Partial<DailyObjectives>
+        : {};
+      setObjectives({
+        ...createEmptyDailyObjectives(),
+        ...stored,
+      });
+    }
+  ), []);
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
     if (!report || !auth.currentUser) return;
@@ -180,7 +203,7 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
-        <div className="mb-4 inline-flex bg-white border border-slate-200 p-1 rounded-lg">
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 bg-white border border-slate-200 p-1 rounded-lg w-full sm:w-fit">
           <button
             type="button"
             onClick={() => setSelectedView('report')}
@@ -205,12 +228,32 @@ export default function EmployeeDashboard() {
             <CalendarDays size={17} />
             Calendario chiamate
           </button>
+          <button
+            type="button"
+            onClick={() => setSelectedView('notices')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
+              selectedView === 'notices'
+                ? 'bg-[#003781] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Megaphone size={17} />
+            Avvisi
+          </button>
         </div>
 
         {selectedView === 'calendar' && <EmployeeCallCalendar />}
+        {selectedView === 'notices' && <EmployeeNotices />}
 
         {selectedView === 'report' && (
           <section className="space-y-3">
+            {objectives.enabled && report && (
+              <DailyObjectivesPanel
+                objectives={objectives}
+                report={report}
+              />
+            )}
+
             <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-bold text-slate-800">Rendicontazione giornaliera</h2>
@@ -282,6 +325,68 @@ export default function EmployeeDashboard() {
         )}
       </main>
     </div>
+  );
+}
+
+function DailyObjectivesPanel({
+  objectives,
+  report,
+}: {
+  objectives: DailyObjectives;
+  report: DailyReport;
+}) {
+  const visibleObjectives = CATEGORIES
+    .filter(category => objectives[category.id] > 0);
+
+  if (visibleObjectives.length === 0) return null;
+
+  return (
+    <section className="bg-white border border-blue-200 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+        <Target size={19} className="text-[#003781]" />
+        <div>
+          <h2 className="font-bold text-slate-800">Obiettivi di oggi</h2>
+          <p className="text-xs text-slate-500">Avanzamento della rendicontazione giornaliera.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 divide-y sm:divide-y-0 border-slate-100">
+        {visibleObjectives.map(category => {
+          const target = objectives[category.id];
+          const current = getReportCategoryValue(report, category.id);
+          const progress = Math.min(100, Math.round((current / target) * 100));
+
+          return (
+            <div
+              key={category.id}
+              className="p-3 border-slate-100 sm:border-b xl:border-b-0 sm:border-r last:border-r-0"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${category.color}`}>
+                    <category.icon size={17} />
+                  </div>
+                  <span className="text-sm font-semibold text-slate-700 leading-tight">
+                    {category.label}
+                  </span>
+                </div>
+                <span className={`text-sm font-black whitespace-nowrap ${
+                  current >= target ? 'text-emerald-600' : 'text-[#003781]'
+                }`}>
+                  {current}/{target}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={current >= target ? 'h-full bg-emerald-500' : 'h-full bg-[#003781]'}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
