@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { CallCategory } from '../callCenter';
+import { isCallCategoryEnabled } from '../callWorkflowConfig';
 
 export type CallCategorySelection =
   | CallCategory
@@ -11,7 +12,7 @@ export type CampaignFilterOption = {
   label: string;
 };
 
-const CATEGORY_OPTIONS: Array<{
+const ALL_CATEGORY_OPTIONS: Array<{
   id: CallCategorySelection;
   label: string;
 }> = [
@@ -19,6 +20,10 @@ const CATEGORY_OPTIONS: Array<{
   { id: 'scadenza_annuale', label: 'Scadenze annuali' },
   { id: 'winback', label: 'Winback' },
 ];
+
+const CATEGORY_OPTIONS = ALL_CATEGORY_OPTIONS.filter(option =>
+  isCallCategoryEnabled(option.id)
+);
 
 export default function CallCategoryFilter({
   selected,

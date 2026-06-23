@@ -19,7 +19,11 @@ import {
   isTaskClosed,
   isTaskExpired,
 } from '../callCenter';
-import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
+import {
+  CALL_STATUSES,
+  CallStatusId,
+  isCallCategoryEnabled,
+} from '../callWorkflowConfig';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 import { getItalyDate } from '../lib/utils';
 import CallCategoryFilter, {
@@ -58,22 +62,27 @@ export default function AdminCallCenter() {
     });
   }, []);
 
-  const sources = useMemo(
-    () => [...new Map(
-      tasks.map(task => [task.sourceCode, `${task.sourceCode} · ${task.sourceName}`])
-    ).entries()].sort((first, second) => first[1].localeCompare(second[1], 'it')),
+  const enabledTasks = useMemo(
+    () => tasks.filter(task => isCallCategoryEnabled(task.category)),
     [tasks]
   );
 
+  const sources = useMemo(
+    () => [...new Map(
+      enabledTasks.map(task => [task.sourceCode, `${task.sourceCode} · ${task.sourceName}`])
+    ).entries()].sort((first, second) => first[1].localeCompare(second[1], 'it')),
+    [enabledTasks]
+  );
+
   const assignees = useMemo(
-    () => [...new Set(tasks.map(task => task.assignedToName).filter(Boolean))]
+    () => [...new Set(enabledTasks.map(task => task.assignedToName).filter(Boolean))]
       .sort((first, second) => first.localeCompare(second, 'it')),
-    [tasks]
+    [enabledTasks]
   );
 
   const campaignOptions = useMemo<CampaignFilterOption[]>(() => [
     ...new Map(
-      tasks
+      enabledTasks
         .filter(task => task.category === 'campagna' && task.campaignId)
         .map(task => [
           task.campaignId as string,
@@ -83,12 +92,12 @@ export default function AdminCallCenter() {
           },
         ])
     ).values(),
-  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [tasks]);
+  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [enabledTasks]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return tasks
+    return enabledTasks
       .filter(task => {
         const effectiveDate = getTaskEffectiveDate(task);
         const matchesSearch = !normalizedSearch || [
@@ -127,7 +136,7 @@ export default function AdminCallCenter() {
         return first.clientName.localeCompare(second.clientName, 'it');
       });
   }, [
-    tasks,
+    enabledTasks,
     search,
     status,
     selectedCategories,
@@ -151,11 +160,11 @@ export default function AdminCallCenter() {
     operationalView,
   ]);
 
-  const todayCount = tasks.filter(task => isTaskActionable(task, today)).length;
-  const overdueCount = tasks.filter(task =>
+  const todayCount = enabledTasks.filter(task => isTaskActionable(task, today)).length;
+  const overdueCount = enabledTasks.filter(task =>
     isTaskActionable(task, today) && getTaskEffectiveDate(task) < today
   ).length;
-  const nextSevenCount = tasks.filter(task => {
+  const nextSevenCount = enabledTasks.filter(task => {
     const effectiveDate = getTaskEffectiveDate(task);
     return !isTaskClosed(task.status) &&
       !isTaskExpired(task, today) &&
@@ -163,7 +172,7 @@ export default function AdminCallCenter() {
       effectiveDate > today &&
       effectiveDate <= nextSevenDays;
   }).length;
-  const completedCount = tasks.filter(task => isTaskClosed(task.status)).length;
+  const completedCount = enabledTasks.filter(task => isTaskClosed(task.status)).length;
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 

@@ -27,6 +27,7 @@ import {
   parseClientWorkbook,
   syncCampaignTasks,
 } from '../callCenter';
+import { CALL_WORKFLOW_CONFIG } from '../callWorkflowConfig';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
 
 type CampaignDraft = {
@@ -65,6 +66,11 @@ const IMPORT_CARDS: Array<{
     description: 'Calcola il richiamo 10 giorni prima dell’anniversario.',
   },
 ];
+
+const VISIBLE_IMPORT_CARDS = IMPORT_CARDS.filter(card =>
+  card.kind !== 'expirations' ||
+  CALL_WORKFLOW_CONFIG.features.expirationCallsEnabled
+);
 
 export default function AdminImportPanel() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -366,7 +372,7 @@ export default function AdminImportPanel() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          {IMPORT_CARDS.map(card => {
+          {VISIBLE_IMPORT_CARDS.map(card => {
             const config = CLIENT_IMPORT_CONFIG[card.kind];
             const file = selectedFiles[card.kind];
             const isImporting = importingKind === card.kind;

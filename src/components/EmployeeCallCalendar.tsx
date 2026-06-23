@@ -42,7 +42,11 @@ import {
   isTaskClosed,
   isTaskExpired,
 } from '../callCenter';
-import { CALL_STATUSES, CallStatusId } from '../callWorkflowConfig';
+import {
+  CALL_STATUSES,
+  CallStatusId,
+  isCallCategoryEnabled,
+} from '../callWorkflowConfig';
 import { getItalyDate } from '../lib/utils';
 import CallCategoryFilter, {
   CallCategorySelection,
@@ -87,10 +91,15 @@ export default function EmployeeCallCalendar() {
     });
   }, []);
 
+  const enabledTasks = useMemo(
+    () => tasks.filter(task => isCallCategoryEnabled(task.category)),
+    [tasks]
+  );
+
   const availableHelpSources = useMemo(() => {
     const sources = new Map<string, { key: string; code: string; name: string }>();
 
-    tasks.forEach(task => {
+    enabledTasks.forEach(task => {
       if (
         ownSourceCodes.some(code => code === task.sourceCode) ||
         isTaskExpired(task, today) ||
@@ -111,9 +120,9 @@ export default function EmployeeCallCalendar() {
       const codeComparison = first.code.localeCompare(second.code, 'it');
       return codeComparison || first.name.localeCompare(second.name, 'it');
     });
-  }, [tasks, ownSourceCodes, today]);
+  }, [enabledTasks, ownSourceCodes, today]);
 
-  const modeTasks = useMemo(() => tasks.filter(task => {
+  const modeTasks = useMemo(() => enabledTasks.filter(task => {
     if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;
     const isMine = ownSourceCodes.some(code => code === task.sourceCode);
     if (sourceMode === 'mine') return isMine;
@@ -121,7 +130,7 @@ export default function EmployeeCallCalendar() {
       selectedHelpSources.includes(getSourceKey(task)) &&
       (!task.assignedToUid || task.assignedToUid === currentUid);
   }), [
-    tasks,
+    enabledTasks,
     ownSourceCodes,
     sourceMode,
     currentUid,
@@ -131,7 +140,7 @@ export default function EmployeeCallCalendar() {
 
   const campaignOptions = useMemo<CampaignFilterOption[]>(() => [
     ...new Map(
-      tasks
+      enabledTasks
         .filter(task => task.category === 'campagna' && task.campaignId)
         .map(task => [
           task.campaignId as string,
@@ -141,7 +150,7 @@ export default function EmployeeCallCalendar() {
           },
         ])
     ).values(),
-  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [tasks]);
+  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [enabledTasks]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });

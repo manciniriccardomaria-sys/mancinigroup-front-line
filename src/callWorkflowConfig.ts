@@ -17,6 +17,10 @@ export const CALL_WORKFLOW_CONFIG = {
   defaultStatus: 'da_chiamare' as CallStatusId,
   statusesAreEditable: true,
   showOverdueCalls: true,
+  features: {
+    // Riporta a true per riattivare scadenze rata e annuali in tutta l'app.
+    expirationCallsEnabled: false,
+  },
   sourceOwnership: {
     sourceRepresentsPortfolioOwner: true,
     ownerTypes: ['employee', 'collaborator'],
@@ -30,3 +34,13 @@ export const CALL_WORKFLOW_CONFIG = {
   },
 } as const;
 
+export function isCallCategoryEnabled(category: string): boolean {
+  if (
+    category === 'scadenza_rata' ||
+    category === 'scadenza_annuale'
+  ) {
+    return CALL_WORKFLOW_CONFIG.features.expirationCallsEnabled;
+  }
+
+  return true;
+}
