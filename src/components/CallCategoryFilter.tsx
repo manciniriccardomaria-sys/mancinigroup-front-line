@@ -34,12 +34,10 @@ export default function CallCategoryFilter({
   onChange: (selected: CallCategorySelection[]) => void;
   campaigns?: CampaignFilterOption[];
 }) {
-  const campaignOptions = campaigns.length > 0
-    ? campaigns.map(campaign => ({
-        id: `campaign:${campaign.id}` as CallCategorySelection,
-        label: campaign.label,
-      }))
-    : [{ id: 'campagna' as CallCategorySelection, label: 'Campagne' }];
+  const campaignOptions = campaigns.map(campaign => ({
+    id: `campaign:${campaign.id}` as CallCategorySelection,
+    label: campaign.label,
+  }));
   const options = [...campaignOptions, ...CATEGORY_OPTIONS];
   const label = selected.length === 0
     ? 'Tutte le categorie'

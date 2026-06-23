@@ -35,6 +35,7 @@ import {
 import { auth, db } from '../firebase';
 import { getAuthorizedEmployee } from '../constants';
 import {
+  Campaign,
   CallTask,
   getTaskEffectiveDate,
   isTaskActionable,
@@ -57,6 +58,7 @@ type SourceMode = 'mine' | 'help';
 
 export default function EmployeeCallCalendar() {
   const [tasks, setTasks] = useState<CallTask[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(() => getItalyDate());
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseISO(getItalyDate())));
@@ -91,9 +93,31 @@ export default function EmployeeCallCalendar() {
     });
   }, []);
 
+  useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
+    setCampaigns(snapshot.docs.map(item => ({
+      id: item.id,
+      ...item.data(),
+    } as Campaign)));
+  }), []);
+
+  const activeCampaigns = useMemo(
+    () => campaigns.filter(campaign => campaign.active),
+    [campaigns]
+  );
+  const activeCampaignIds = useMemo(
+    () => new Set(activeCampaigns.map(campaign => campaign.id)),
+    [activeCampaigns]
+  );
+
   const enabledTasks = useMemo(
-    () => tasks.filter(task => isCallCategoryEnabled(task.category)),
-    [tasks]
+    () => tasks.filter(task =>
+      isCallCategoryEnabled(task.category) &&
+      (
+        task.category !== 'campagna' ||
+        Boolean(task.campaignId && activeCampaignIds.has(task.campaignId))
+      )
+    ),
+    [tasks, activeCampaignIds]
   );
 
   const availableHelpSources = useMemo(() => {
@@ -138,19 +162,22 @@ export default function EmployeeCallCalendar() {
     selectedHelpSources,
   ]);
 
-  const campaignOptions = useMemo<CampaignFilterOption[]>(() => [
-    ...new Map(
-      enabledTasks
-        .filter(task => task.category === 'campagna' && task.campaignId)
-        .map(task => [
-          task.campaignId as string,
-          {
-            id: task.campaignId as string,
-            label: task.campaignName || task.categoryLabel,
-          },
-        ])
-    ).values(),
-  ].sort((first, second) => first.label.localeCompare(second.label, 'it')), [enabledTasks]);
+  const campaignOptions = useMemo<CampaignFilterOption[]>(
+    () => activeCampaigns
+      .map(campaign => ({
+        id: campaign.id,
+        label: campaign.name,
+      }))
+      .sort((first, second) => first.label.localeCompare(second.label, 'it')),
+    [activeCampaigns]
+  );
+
+  useEffect(() => {
+    setSelectedCategories(previous => previous.filter(selection =>
+      !selection.startsWith('campaign:') ||
+      activeCampaignIds.has(selection.slice('campaign:'.length))
+    ));
+  }, [activeCampaignIds]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
