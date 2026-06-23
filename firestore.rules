@@ -68,6 +68,8 @@ service cloud.firestore {
              data.userId is string && data.userId.size() < 128 &&
              data.userName is string && data.userName.size() < 100 &&
              data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             (!('values' in data) ||
+               data.values is map && data.values.size() <= 100) &&
              // Validate all counters are integers >= 0
              (!('incassi' in data) || data.incassi is int && data.incassi >= 0) &&
              (!('recensioni' in data) || data.recensioni is int && data.recensioni >= 0) &&
@@ -129,8 +131,9 @@ service cloud.firestore {
     }
 
     function isValidDailyObjectives(data) {
-      return data.keys().hasAll(['enabled']) &&
+      return data.keys().hasAll(['enabled', 'values']) &&
         data.enabled is bool &&
+        data.values is map && data.values.size() <= 100 &&
         (!('updatedBy' in data) ||
           data.updatedBy is string && data.updatedBy.size() < 150) &&
         (!('incassi' in data) || data.incassi is int && data.incassi >= 0) &&
@@ -155,6 +158,63 @@ service cloud.firestore {
         (!('contattiProtection' in data) || data.contattiProtection is int && data.contattiProtection >= 0) &&
         (!('contattiEnergia' in data) || data.contattiEnergia is int && data.contattiEnergia >= 0) &&
         (!('contattiNoleggio' in data) || data.contattiNoleggio is int && data.contattiNoleggio >= 0);
+    }
+
+    function isValidReportCategory(data) {
+      return data.keys().hasAll([
+        'label',
+        'sectionId',
+        'iconKey',
+        'color',
+        'order'
+      ]) &&
+        data.label is string &&
+        data.label.size() > 0 && data.label.size() <= 100 &&
+        data.sectionId in ['reception', 'priority', 'other'] &&
+        data.iconKey in [
+          'banknote',
+          'car',
+          'car-front',
+          'file-check',
+          'home',
+          'house-plus',
+          'info',
+          'store',
+          'chart',
+          'heart',
+          'phone',
+          'book-check',
+          'shopping-bag',
+          'shield-alert',
+          'shield-check',
+          'briefcase',
+          'piggy-bank',
+          'zap',
+          'star',
+          'key',
+          'target',
+          'users',
+          'message',
+          'mail',
+          'calendar-check',
+          'clipboard-check',
+          'dollar'
+        ] &&
+        data.color in [
+          'text-blue-600',
+          'text-indigo-600',
+          'text-violet-600',
+          'text-fuchsia-600',
+          'text-pink-600',
+          'text-rose-600',
+          'text-cyan-600',
+          'text-green-600',
+          'text-emerald-600',
+          'text-amber-600',
+          'text-orange-600',
+          'text-yellow-600'
+        ] &&
+        data.order is int && data.order >= 0 && data.order <= 100000;
     }
 
     function isValidCallTask(data) {
@@ -297,6 +357,13 @@ service cloud.firestore {
       allow create, update: if isAdmin() &&
         objectiveId == 'current' &&
         isValidDailyObjectives(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /report_categories/{categoryId} {
+      allow read: if isApprovedUserEmail();
+      allow create, update: if isAdmin() &&
+        isValidReportCategory(request.resource.data);
       allow delete: if isAdmin();
     }
 

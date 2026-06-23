@@ -2,14 +2,17 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { db, auth } from '../firebase';
 import { collection, doc, query, onSnapshot, orderBy, setDoc } from 'firebase/firestore';
 import {
-  CATEGORY_SECTIONS,
-  CATEGORIES,
   DailyReport,
   UserProfile,
   CategoryId,
   getAuthorizedAgent,
   getReportCategoryValue,
 } from '../constants';
+import {
+  ReportCategory,
+  getReportCategoryIcon,
+  useReportCategories,
+} from '../reportCatalog';
 import { 
   Users, 
   BarChart3, 
@@ -97,6 +100,20 @@ export default function AdminDashboard() {
     'emissRetailSe',
   ]);
   const [selectedCategoriesStorico, setSelectedCategoriesStorico] = useState<CategoryId[]>(['incassi']);
+  const { categories, sections, loading: categoriesLoading } = useReportCategories();
+
+  useEffect(() => {
+    if (categories.length === 0) return;
+
+    const availableIds = new Set(categories.map(category => category.id));
+    const keepAvailable = (selected: CategoryId[]) => {
+      const valid = selected.filter(categoryId => availableIds.has(categoryId));
+      return valid.length > 0 ? valid : [categories[0].id];
+    };
+
+    setSelectedCategoriesFL(keepAvailable);
+    setSelectedCategoriesStorico(keepAvailable);
+  }, [categories]);
 
   useEffect(() => {
     const q = query(collection(db, 'daily_reports'), orderBy('date', 'desc'));
@@ -175,14 +192,14 @@ export default function AdminDashboard() {
 
   // Overview Data (Cards)
   const categoryTotals = useMemo(() => {
-    return CATEGORIES.map(cat => {
+    return categories.map(cat => {
       const total = filteredReports.reduce(
         (sum, report) => sum + getReportCategoryValue(report, cat.id),
         0
       );
       return { ...cat, total };
     });
-  }, [filteredReports]);
+  }, [categories, filteredReports]);
 
   // Employee Comparison Data
   const employeeComparisonData = useMemo(() => {
@@ -191,7 +208,7 @@ export default function AdminDashboard() {
       const userReports = filteredReports.filter(r => r.userId === uid);
       const data: any = { name: user?.name || 'Sconosciuto' };
       
-      CATEGORIES.forEach(cat => {
+      categories.forEach(cat => {
         data[cat.id] = userReports.reduce(
           (sum, report) => sum + getReportCategoryValue(report, cat.id),
           0
@@ -200,7 +217,7 @@ export default function AdminDashboard() {
       
       return data;
     });
-  }, [filteredReports, selectedEmployees, users]);
+  }, [categories, filteredReports, selectedEmployees, users]);
 
   // History Comparison Data (Activity vs Activity)
   const historyComparisonData = useMemo(() => {
@@ -239,7 +256,7 @@ export default function AdminDashboard() {
       const totals: any = {};
       let grandTotal = 0;
       
-      CATEGORIES.forEach(cat => {
+      categories.forEach(cat => {
         const val = userReports.reduce(
           (sum, report) => sum + getReportCategoryValue(report, cat.id),
           0
@@ -254,7 +271,7 @@ export default function AdminDashboard() {
         grandTotal
       };
     }).sort((a, b) => b.grandTotal - a.grandTotal);
-  }, [filteredReports, users]);
+  }, [categories, filteredReports, users]);
 
   const exportToCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
@@ -265,14 +282,14 @@ export default function AdminDashboard() {
         csvContent += `${cat.label},${cat.total}\n`;
       });
     } else if (selectedTab === 'dettaglio_fl') {
-      const headers = ["Dipendente", ...selectedCategoriesFL.map(id => CATEGORIES.find(c => c.id === id)?.label)];
+      const headers = ["Dipendente", ...selectedCategoriesFL.map(id => categories.find(c => c.id === id)?.label)];
       csvContent += headers.join(",") + "\n";
       employeeComparisonData.forEach(emp => {
         const row = [emp.name, ...selectedCategoriesFL.map(id => emp[id] || 0)];
         csvContent += row.join(",") + "\n";
       });
     } else {
-      const headers = ["Data", ...selectedCategoriesStorico.map(id => CATEGORIES.find(c => c.id === id)?.label)];
+      const headers = ["Data", ...selectedCategoriesStorico.map(id => categories.find(c => c.id === id)?.label)];
       csvContent += headers.join(",") + "\n";
       historyComparisonData.forEach(day => {
         const row = [day.fullDate, ...selectedCategoriesStorico.map(id => day[id] || 0)];
@@ -294,7 +311,7 @@ export default function AdminDashboard() {
       'Data',
       'Fonte',
       'Email',
-      ...CATEGORY_SECTIONS.flatMap(section =>
+      ...sections.flatMap(section =>
         section.categories.map(category => `${section.title} - ${category.label}`)
       ),
       'Totale giornaliero',
@@ -311,7 +328,7 @@ export default function AdminDashboard() {
       })
       .map(report => {
         const user = users.find(item => item.uid === report.userId);
-        const categoryValues = CATEGORIES.map(category =>
+        const categoryValues = categories.map(category =>
           getReportCategoryValue(report, category.id)
         );
         const dailyTotal = categoryValues.reduce((sum, value) => sum + value, 0);
@@ -335,7 +352,7 @@ export default function AdminDashboard() {
     );
   };
 
-  if (loading) {
+  if (loading || categoriesLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <Loader2 className="w-12 h-12 text-[#003781] animate-spin" />
@@ -513,7 +530,7 @@ export default function AdminDashboard() {
                   Totali Agenzia
                 </h3>
                 <div className="space-y-8">
-                  {CATEGORY_SECTIONS.map(section => (
+                  {sections.map(section => (
                     <div key={section.id}>
                       <h4 className="text-sm font-bold text-slate-600 uppercase mb-3">
                         {section.title}
@@ -525,7 +542,7 @@ export default function AdminDashboard() {
                             <div key={cat.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                               <div className="flex items-center justify-between mb-3">
                                 <div className={cn("p-2.5 rounded-xl bg-slate-50", cat.color)}>
-                                  <cat.icon size={24} />
+                                  <ReportCategoryGlyph category={cat} size={24} />
                                 </div>
                                 {cat.total > 0 && (
                                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase">Attivo</span>
@@ -569,10 +586,10 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                       <div className="p-6 grid grid-cols-2 gap-4 flex-1">
-                        {CATEGORIES.slice(0, 6).map(cat => (
+                        {categories.slice(0, 6).map(cat => (
                           <div key={cat.id} className="flex items-center gap-3">
                             <div className={cn("p-2 rounded-lg bg-slate-50", cat.color)}>
-                              <cat.icon size={16} />
+                              <ReportCategoryGlyph category={cat} size={16} />
                             </div>
                             <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{cat.label}</p>
@@ -638,7 +655,7 @@ export default function AdminDashboard() {
                   Seleziona Attività da Confrontare
                 </h3>
                 <div className="space-y-5">
-                  {CATEGORY_SECTIONS.map(section => (
+                  {sections.map(section => (
                     <div key={section.id}>
                       <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
                         {section.title}
@@ -661,7 +678,7 @@ export default function AdminDashboard() {
                                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                             )}
                           >
-                            <cat.icon size={16} />
+                            <ReportCategoryGlyph category={cat} size={16} />
                             {cat.label}
                           </button>
                         ))}
@@ -690,7 +707,7 @@ export default function AdminDashboard() {
                           <Bar 
                             key={catId} 
                             dataKey={catId} 
-                            name={CATEGORIES.find(c => c.id === catId)?.label} 
+                            name={categories.find(c => c.id === catId)?.label}
                             fill={getChartColor(i)} 
                             radius={[4, 4, 0, 0]} 
                           />
@@ -705,12 +722,12 @@ export default function AdminDashboard() {
                   <div className="space-y-4">
                     {[...employeeComparisonData]
                       .sort((a, b) => {
-                        const sumA = CATEGORIES.reduce((s, c) => s + (a[c.id] || 0), 0);
-                        const sumB = CATEGORIES.reduce((s, c) => s + (b[c.id] || 0), 0);
+                        const sumA = categories.reduce((s, c) => s + (a[c.id] || 0), 0);
+                        const sumB = categories.reduce((s, c) => s + (b[c.id] || 0), 0);
                         return sumB - sumA;
                       })
                       .map((emp, i) => {
-                        const total = CATEGORIES.reduce((s, c) => s + (emp[c.id] || 0), 0);
+                        const total = categories.reduce((s, c) => s + (emp[c.id] || 0), 0);
                         return (
                           <div key={emp.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                             <div className="flex items-center gap-3">
@@ -738,7 +755,7 @@ export default function AdminDashboard() {
                   Seleziona Attività da Analizzare
                 </h3>
                 <div className="space-y-5">
-                  {CATEGORY_SECTIONS.map(section => (
+                  {sections.map(section => (
                     <div key={section.id}>
                       <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
                         {section.title}
@@ -761,7 +778,7 @@ export default function AdminDashboard() {
                                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                             )}
                           >
-                            <cat.icon size={16} />
+                            <ReportCategoryGlyph category={cat} size={16} />
                             {cat.label}
                           </button>
                         ))}
@@ -814,7 +831,7 @@ export default function AdminDashboard() {
                           key={catId} 
                           type="monotone" 
                           dataKey={catId} 
-                          name={CATEGORIES.find(c => c.id === catId)?.label} 
+                          name={categories.find(c => c.id === catId)?.label}
                           stroke={getChartColor(i)} 
                           strokeWidth={3}
                           dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
@@ -839,6 +856,17 @@ export default function AdminDashboard() {
       </main>
     </div>
   );
+}
+
+function ReportCategoryGlyph({
+  category,
+  size,
+}: {
+  category: ReportCategory;
+  size: number;
+}) {
+  const Icon = getReportCategoryIcon(category.iconKey);
+  return <Icon size={size} />;
 }
 
 function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {

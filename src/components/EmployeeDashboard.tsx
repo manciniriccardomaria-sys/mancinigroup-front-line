@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
 import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import {
-  CATEGORY_SECTIONS,
-  CATEGORIES,
   DailyReport,
   DailyObjectives,
   CategoryId,
-  createEmptyCategoryCounts,
   createEmptyDailyObjectives,
   getReportCategoryValue,
 } from '../constants';
+import {
+  ReportCategory,
+  getReportCategoryIcon,
+  useReportCategories,
+} from '../reportCatalog';
 import { getItalyDate } from '../lib/utils';
 import { 
   LogOut, 
@@ -38,6 +40,11 @@ export default function EmployeeDashboard() {
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
   const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'notices'>('report');
+  const {
+    categories,
+    sections,
+    loading: categoriesLoading,
+  } = useReportCategories();
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -79,6 +86,7 @@ export default function EmployeeDashboard() {
           const normalizedReport = {
             ...initialReport,
             ...storedReport,
+            values: storedReport.values || {},
             emissMotorSe: storedReport.emissMotorSe ?? storedReport.emissSe ?? 0,
             sinistriRetail: storedReport.sinistriRetail ?? storedReport.sinistriRamiVari ?? 0,
             contattiProtection: storedReport.contattiProtection ?? storedReport.contattiVita ?? 0,
@@ -111,28 +119,44 @@ export default function EmployeeDashboard() {
     doc(db, 'daily_objectives', 'current'),
     snapshot => {
       const stored = snapshot.exists()
-        ? snapshot.data() as Partial<DailyObjectives>
+        ? snapshot.data() as Partial<DailyObjectives> & Record<string, unknown>
         : {};
       setObjectives({
         ...createEmptyDailyObjectives(),
-        ...stored,
+        enabled: stored.enabled === true,
+        values: {
+          ...(stored.values || {}),
+          ...Object.fromEntries(
+            categories
+              .filter(category => typeof stored[category.id] === 'number')
+              .map(category => [category.id, stored[category.id] as number])
+          ),
+        },
+        updatedBy: stored.updatedBy,
+        updatedAt: stored.updatedAt,
       });
     }
-  ), []);
+  ), [categories]);
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
     if (!report || !auth.currentUser) return;
 
-    const newValue = Math.max(0, (report[categoryId as keyof DailyReport] as number) + delta);
+    const newValue = Math.max(
+      0,
+      getReportCategoryValue(report, categoryId) + delta
+    );
     const updatedReport = {
       ...report,
-      [categoryId]: newValue
+      values: {
+        ...(report.values || {}),
+        [categoryId]: newValue,
+      },
     };
 
     setSaving(true);
     const reportId = `${auth.currentUser.uid}_${today}`;
     try {
-      await setDoc(doc(db, 'daily_reports', reportId), updatedReport);
+      await setDoc(doc(db, 'daily_reports', reportId), updatedReport, { merge: true });
     } catch (saveError) {
       console.error('Error saving daily report:', saveError);
       setError(getReportErrorMessage(saveError));
@@ -141,7 +165,7 @@ export default function EmployeeDashboard() {
     }
   };
 
-  if (loading) {
+  if (loading || categoriesLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#003781]"></div>
@@ -251,6 +275,7 @@ export default function EmployeeDashboard() {
               <DailyObjectivesPanel
                 objectives={objectives}
                 report={report}
+                categories={categories}
               />
             )}
 
@@ -269,7 +294,7 @@ export default function EmployeeDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
-              {CATEGORY_SECTIONS.map(section => (
+              {sections.map(section => (
                 <section
                   key={section.id}
                   className="bg-white border border-slate-200 rounded-lg overflow-hidden"
@@ -281,45 +306,57 @@ export default function EmployeeDashboard() {
                   </div>
 
                   <div className="divide-y divide-slate-100">
-                    {section.categories.map(cat => (
-                      <div
-                        key={cat.id}
-                        className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${cat.color}`}>
-                            <cat.icon size={17} />
-                          </div>
-                          <span className="block text-sm font-medium text-slate-700 leading-tight">
-                            {cat.label}
-                          </span>
-                        </div>
+                    {section.categories.map(cat => {
+                      const CategoryIcon = getReportCategoryIcon(cat.iconKey);
+                      const value = report
+                        ? getReportCategoryValue(report, cat.id)
+                        : 0;
 
-                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
-                          <button
-                            onClick={() => updateCount(cat.id, -1)}
-                            className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
-                            disabled={report?.[cat.id] === 0}
-                            title={`Diminuisci ${cat.label}`}
-                          >
-                            <Minus size={16} />
-                          </button>
-                          <div className="w-8 text-center font-bold text-base text-slate-800">
-                            {report?.[cat.id] || 0}
+                      return (
+                        <div
+                          key={cat.id}
+                          className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${cat.color}`}>
+                              <CategoryIcon size={17} />
+                            </div>
+                            <span className="block text-sm font-medium text-slate-700 leading-tight">
+                              {cat.label}
+                            </span>
                           </div>
-                          <button
-                            onClick={() => updateCount(cat.id, 1)}
-                            className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
-                            title={`Aumenta ${cat.label}`}
-                          >
-                            <Plus size={16} />
-                          </button>
+
+                          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+                            <button
+                              onClick={() => updateCount(cat.id, -1)}
+                              className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
+                              disabled={value === 0}
+                              title={`Diminuisci ${cat.label}`}
+                            >
+                              <Minus size={16} />
+                            </button>
+                            <div className="w-8 text-center font-bold text-base text-slate-800">
+                              {value}
+                            </div>
+                            <button
+                              onClick={() => updateCount(cat.id, 1)}
+                              className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
+                              title={`Aumenta ${cat.label}`}
+                            >
+                              <Plus size={16} />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               ))}
+              {sections.length === 0 && (
+                <div className="lg:col-span-3 bg-white border border-dashed border-slate-300 rounded-lg py-12 text-center text-slate-500">
+                  Nessuna voce di rendicontazione configurata.
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -331,12 +368,14 @@ export default function EmployeeDashboard() {
 function DailyObjectivesPanel({
   objectives,
   report,
+  categories,
 }: {
   objectives: DailyObjectives;
   report: DailyReport;
+  categories: ReportCategory[];
 }) {
-  const visibleObjectives = CATEGORIES
-    .filter(category => objectives[category.id] > 0);
+  const visibleObjectives = categories
+    .filter(category => (objectives.values[category.id] || 0) > 0);
 
   if (visibleObjectives.length === 0) return null;
 
@@ -352,9 +391,10 @@ function DailyObjectivesPanel({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 divide-y sm:divide-y-0 border-slate-100">
         {visibleObjectives.map(category => {
-          const target = objectives[category.id];
+          const target = objectives.values[category.id] || 0;
           const current = getReportCategoryValue(report, category.id);
           const progress = Math.min(100, Math.round((current / target) * 100));
+          const CategoryIcon = getReportCategoryIcon(category.iconKey);
 
           return (
             <div
@@ -364,7 +404,7 @@ function DailyObjectivesPanel({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${category.color}`}>
-                    <category.icon size={17} />
+                    <CategoryIcon size={17} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 leading-tight">
                     {category.label}
@@ -395,7 +435,7 @@ function createInitialReport(userId: string, userName: string, date: string): Da
     userId,
     userName,
     date,
-    ...createEmptyCategoryCounts(),
+    values: {},
   };
 }
 

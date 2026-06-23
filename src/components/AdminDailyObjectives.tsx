@@ -8,13 +8,15 @@ import {
   Target,
 } from 'lucide-react';
 import {
-  CATEGORY_SECTIONS,
-  CATEGORIES,
-  CategoryId,
   DailyObjectives,
   createEmptyDailyObjectives,
 } from '../constants';
 import { auth, db } from '../firebase';
+import {
+  getReportCategoryIcon,
+  useReportCategories,
+} from '../reportCatalog';
+import AdminReportCategories from './AdminReportCategories';
 
 export default function AdminDailyObjectives() {
   const [objectives, setObjectives] = useState<DailyObjectives>(
@@ -23,25 +25,39 @@ export default function AdminDailyObjectives() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const { categories, sections, loading: categoriesLoading } = useReportCategories();
 
   useEffect(() => onSnapshot(
     doc(db, 'daily_objectives', 'current'),
     snapshot => {
       const stored = snapshot.exists()
-        ? snapshot.data() as Partial<DailyObjectives>
+        ? snapshot.data() as Partial<DailyObjectives> & Record<string, unknown>
         : {};
       setObjectives({
         ...createEmptyDailyObjectives(),
-        ...stored,
+        enabled: stored.enabled === true,
+        values: {
+          ...(stored.values || {}),
+          ...Object.fromEntries(
+            categories
+              .filter(category => typeof stored[category.id] === 'number')
+              .map(category => [category.id, stored[category.id] as number])
+          ),
+        },
+        updatedBy: stored.updatedBy,
+        updatedAt: stored.updatedAt,
       });
     }
-  ), []);
+  ), [categories]);
 
-  const updateObjective = (categoryId: CategoryId, value: number) => {
+  const updateObjective = (categoryId: string, value: number) => {
     setSaved(false);
     setObjectives(previous => ({
       ...previous,
-      [categoryId]: Math.max(0, Math.floor(value || 0)),
+      values: {
+        ...previous.values,
+        [categoryId]: Math.max(0, Math.floor(value || 0)),
+      },
     }));
   };
 
@@ -51,7 +67,8 @@ export default function AdminDailyObjectives() {
     setError('');
     try {
       await setDoc(doc(db, 'daily_objectives', 'current'), {
-        ...objectives,
+        enabled: objectives.enabled,
+        values: objectives.values,
         updatedBy: auth.currentUser?.displayName || auth.currentUser?.email || 'Agente',
         updatedAt: serverTimestamp(),
       });
@@ -64,11 +81,13 @@ export default function AdminDailyObjectives() {
     }
   };
 
-  const activeCount = CATEGORIES
-    .filter(category => objectives[category.id] > 0).length;
+  const activeCount = categories
+    .filter(category => (objectives.values[category.id] || 0) > 0).length;
 
   return (
     <div className="space-y-5">
+      <AdminReportCategories categories={categories} />
+
       <section className="bg-white border border-slate-200 rounded-lg p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="p-2.5 bg-blue-50 text-[#003781] rounded-lg">
@@ -113,8 +132,14 @@ export default function AdminDailyObjectives() {
         </label>
       </section>
 
+      {categoriesLoading && (
+        <div className="py-10 text-center text-slate-500">
+          Caricamento voci...
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
-        {CATEGORY_SECTIONS.map(section => (
+        {sections.map(section => (
           <section
             key={section.id}
             className="bg-white border border-slate-200 rounded-lg overflow-hidden"
@@ -127,7 +152,8 @@ export default function AdminDailyObjectives() {
 
             <div className="divide-y divide-slate-100">
               {section.categories.map(category => {
-                const value = objectives[category.id] || 0;
+                const value = objectives.values[category.id] || 0;
+                const CategoryIcon = getReportCategoryIcon(category.iconKey);
                 return (
                   <div
                     key={category.id}
@@ -137,7 +163,7 @@ export default function AdminDailyObjectives() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${category.color}`}>
-                        <category.icon size={17} />
+                        <CategoryIcon size={17} />
                       </div>
                       <div className="min-w-0">
                         <span className="block text-sm font-medium text-slate-700 leading-tight">
