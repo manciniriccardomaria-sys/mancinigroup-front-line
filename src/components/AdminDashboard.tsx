@@ -16,16 +16,13 @@ import {
 import { 
   Users, 
   BarChart3, 
-  Calendar, 
   ChevronRight, 
   LogOut, 
   TrendingUp,
-  Search,
   Filter,
   Download,
   LayoutDashboard,
   History,
-  ArrowRightLeft,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   AlertTriangle,
@@ -44,8 +41,7 @@ import {
   ResponsiveContainer, 
   Legend,
   LineChart,
-  Line,
-  Cell
+  Line
 } from 'recharts';
 import { formatDate, getItalyDate, cn } from '../lib/utils';
 import { 
@@ -273,6 +269,36 @@ export default function AdminDashboard() {
     }).sort((a, b) => b.grandTotal - a.grandTotal);
   }, [categories, filteredReports, users]);
 
+  const agencyTotal = useMemo(
+    () => categoryTotals.reduce((sum, category) => sum + category.total, 0),
+    [categoryTotals]
+  );
+
+  const activeCategoryCount = useMemo(
+    () => categoryTotals.filter(category => category.total > 0).length,
+    [categoryTotals]
+  );
+
+  const activeEmployeeCount = useMemo(
+    () => employeeTotals.filter(employee => employee.grandTotal > 0).length,
+    [employeeTotals]
+  );
+
+  const periodLabel = useMemo(() => {
+    const start = parseISO(startDate);
+    const end = parseISO(endDate);
+
+    if (timeRange === 'day') return format(start, 'dd MMM yyyy', { locale: it });
+    if (timeRange === 'week') {
+      const weekStart = startOfWeek(start, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(start, { weekStartsOn: 1 });
+      return `${format(weekStart, 'dd MMM', { locale: it })} - ${format(weekEnd, 'dd MMM yyyy', { locale: it })}`;
+    }
+    if (timeRange === 'month') return format(start, 'MMMM yyyy', { locale: it });
+
+    return `${format(start, 'dd MMM', { locale: it })} - ${format(end, 'dd MMM yyyy', { locale: it })}`;
+  }, [endDate, startDate, timeRange]);
+
   const exportToCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
     
@@ -384,62 +410,62 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
       {/* Sidebar */}
-      <aside className="w-full lg:w-64 bg-[#003781] text-white lg:fixed lg:h-full z-20">
-        <div className="p-6">
-          <h1 className="text-xl font-bold uppercase tracking-wider">ManciniGroup</h1>
+      <aside className="w-full lg:w-56 bg-[#003781] text-white lg:fixed lg:h-full z-20">
+        <div className="p-5">
+          <h1 className="text-lg font-bold uppercase tracking-wider">ManciniGroup</h1>
           <p className="text-blue-300 text-[10px] mt-1">SISTEMA RENDICONTAZIONE</p>
         </div>
 
-        <nav className="px-4 space-y-1 pb-6">
+        <nav className="px-3 space-y-1 pb-5">
           <NavItem 
             active={selectedTab === 'overview'} 
             onClick={() => setSelectedTab('overview')}
-            icon={<LayoutDashboard size={20} />}
+            icon={<LayoutDashboard size={18} />}
             label="Dashboard"
           />
           <NavItem 
             active={selectedTab === 'dettaglio_fl'} 
             onClick={() => setSelectedTab('dettaglio_fl')}
-            icon={<Users size={20} />}
+            icon={<Users size={18} />}
             label="Dettaglio FL"
           />
           <NavItem 
             active={selectedTab === 'storico'} 
             onClick={() => setSelectedTab('storico')}
-            icon={<History size={20} />}
+            icon={<History size={18} />}
             label="Storico"
           />
           <NavItem
             active={selectedTab === 'obiettivi'}
             onClick={() => setSelectedTab('obiettivi')}
-            icon={<Target size={20} />}
+            icon={<Target size={18} />}
             label="Rendicontazione"
           />
           <NavItem
             active={selectedTab === 'avvisi'}
             onClick={() => setSelectedTab('avvisi')}
-            icon={<Megaphone size={20} />}
+            icon={<Megaphone size={18} />}
             label="Avvisi"
           />
           <NavItem
             active={selectedTab === 'chiamate'}
             onClick={() => setSelectedTab('chiamate')}
-            icon={<PhoneCall size={20} />}
+            icon={<PhoneCall size={18} />}
             label="Monitoraggio chiamate"
           />
           <NavItem
             active={selectedTab === 'importazioni'}
             onClick={() => setSelectedTab('importazioni')}
-            icon={<FileUp size={20} />}
+            icon={<FileUp size={18} />}
             label="Importazioni"
           />
           
           <div className="pt-4 mt-4 border-t border-white/10">
             <button 
               onClick={() => auth.signOut()}
-              className="w-full flex items-center gap-3 px-4 py-3 text-red-300 hover:bg-red-500/10 rounded-xl transition-all text-sm font-medium"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-red-300 hover:bg-red-500/10 rounded-lg transition-all text-sm font-medium"
             >
-              <LogOut size={20} />
+              <LogOut size={18} />
               Esci
             </button>
           </div>
@@ -447,12 +473,12 @@ export default function AdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-64 p-4 lg:p-8">
+      <main className="flex-1 lg:ml-56 p-3 sm:p-4 lg:p-5">
         {/* Top Header & Global Filters */}
-        <header className="mb-8 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="mb-5 space-y-3">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-bold text-slate-800">
+              <h2 className="text-xl font-bold text-slate-800 leading-tight">
                 {selectedTab === 'overview' && 'Panoramica Agenzia'}
                 {selectedTab === 'dettaglio_fl' && 'Dettaglio Front Line'}
                 {selectedTab === 'storico' && 'Analisi Storica'}
@@ -461,16 +487,15 @@ export default function AdminDashboard() {
                 {selectedTab === 'chiamate' && 'Monitoraggio Chiamate'}
                 {selectedTab === 'importazioni' && 'Importazioni e Campagne'}
               </h2>
-              <p className="text-slate-500 text-sm">Gestione e monitoraggio attività ManciniGroup</p>
+              <p className="text-slate-500 text-xs mt-0.5">{periodLabel}</p>
             </div>
 
             {/* Date Range Selector */}
             {['overview', 'dettaglio_fl', 'storico'].includes(selectedTab) && (
-              <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={exportToCSV}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
+              <button
+                onClick={exportToCSV}
+                  className="flex items-center gap-2 px-3 py-2 bg-white text-slate-600 border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 transition-all"
                 >
                   <Download size={16} />
                   Esporta riepilogo
@@ -478,14 +503,13 @@ export default function AdminDashboard() {
                 <button
                   onClick={exportHistoryBySourceCSV}
                   disabled={filteredReports.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#003781] text-white rounded-xl text-xs font-bold hover:bg-[#002a63] transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 bg-[#003781] text-white rounded-lg text-xs font-bold hover:bg-[#002a63] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <History size={16} />
                   Storico fonte/giorno
                 </button>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
               <FilterButton active={timeRange === 'day'} onClick={() => setTimeRange('day')}>Giorno</FilterButton>
               <FilterButton active={timeRange === 'week'} onClick={() => setTimeRange('week')}>Settimana</FilterButton>
               <FilterButton active={timeRange === 'month'} onClick={() => setTimeRange('month')}>Mese</FilterButton>
@@ -519,37 +543,61 @@ export default function AdminDashboard() {
         </header>
 
         {/* Tab Content */}
-        <div className="space-y-8">
+        <div className="space-y-5">
           {/* OVERVIEW TAB */}
           {selectedTab === 'overview' && (
-            <div className="space-y-8">
+            <div className="space-y-5">
+              <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard
+                  icon={<BarChart3 size={18} />}
+                  label="Attività periodo"
+                  value={agencyTotal}
+                />
+                <StatCard
+                  icon={<Users size={18} />}
+                  label="Dipendenti attivi"
+                  value={`${activeEmployeeCount}/${users.length}`}
+                />
+                <StatCard
+                  icon={<Target size={18} />}
+                  label="Voci attive"
+                  value={`${activeCategoryCount}/${categories.length}`}
+                />
+                <StatCard
+                  icon={<TrendingUp size={18} />}
+                  label="Prima fonte"
+                  value={employeeTotals[0]?.name || '-'}
+                  compact
+                />
+              </section>
+
               {/* Global Stats */}
-              <section>
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <TrendingUp size={20} className="text-blue-600" />
-                  Totali Agenzia
-                </h3>
-                <div className="space-y-8">
+              <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                <SectionHeading
+                  icon={<TrendingUp size={18} />}
+                  title="Totali Agenzia"
+                  meta={`${filteredReports.length} report`}
+                />
+                <div className="space-y-5 mt-4">
                   {sections.map(section => (
                     <div key={section.id}>
-                      <h4 className="text-sm font-bold text-slate-600 uppercase mb-3">
+                      <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
                         {section.title}
                       </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5">
                         {section.categories.map(category => {
-                          const cat = categoryTotals.find(item => item.id === category.id)!;
+                          const total = categoryTotals.find(item => item.id === category.id)?.total ?? 0;
                           return (
-                            <div key={cat.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                              <div className="flex items-center justify-between mb-3">
-                                <div className={cn("p-2.5 rounded-xl bg-slate-50", cat.color)}>
-                                  <ReportCategoryGlyph category={cat} size={24} />
+                            <div key={category.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                              <div className="min-w-0 flex items-center gap-2.5">
+                                <div className={cn("shrink-0 p-2 rounded-lg bg-white", category.color)}>
+                                  <ReportCategoryGlyph category={category} size={18} />
                                 </div>
-                                {cat.total > 0 && (
-                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase">Attivo</span>
-                                )}
+                                <h3 className="text-xs font-semibold text-slate-700 truncate">{category.label}</h3>
                               </div>
-                              <h3 className="text-slate-500 text-xs font-semibold uppercase">{cat.label}</h3>
-                              <p className="text-3xl font-black text-slate-800 mt-1">{cat.total}</p>
+                              <p className={cn("text-xl font-black tabular-nums", total > 0 ? "text-slate-900" : "text-slate-300")}>
+                                {total}
+                              </p>
                             </div>
                           );
                         })}
@@ -559,59 +607,86 @@ export default function AdminDashboard() {
                 </div>
               </section>
 
-              {/* Employee Cards */}
-              <section>
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <Users size={20} className="text-blue-600" />
-                  Performance Dipendenti
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {/* Employee Table */}
+              <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-200">
+                  <SectionHeading
+                    icon={<Users size={18} />}
+                    title="Performance Dipendenti"
+                    meta={`${employeeTotals.length} profili`}
+                  />
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left font-bold">Dipendente</th>
+                        <th className="px-4 py-2.5 text-left font-bold">Totale</th>
+                        <th className="px-4 py-2.5 text-left font-bold">Voci principali</th>
+                        <th className="px-4 py-2.5 text-right font-bold">Dettaglio</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
                   {employeeTotals.map((emp) => (
-                    <div key={emp.uid} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                      <div className="p-6 bg-slate-50 border-b border-slate-200">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-[#003781] flex items-center justify-center text-white font-black text-xl">
+                    <tr key={emp.uid} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-[220px]">
+                            <div className="w-9 h-9 rounded-lg bg-[#003781] flex items-center justify-center text-white font-black text-sm">
                               {emp.name.charAt(0)}
                             </div>
-                            <div>
-                              <h4 className="font-bold text-slate-800">{emp.name}</h4>
-                              <p className="text-xs text-slate-500">{emp.email}</p>
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-slate-800 leading-tight truncate">{emp.name}</h4>
+                              <p className="text-xs text-slate-500 truncate">{emp.email}</p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <span className="text-2xl font-black text-[#003781]">{emp.grandTotal}</span>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Punti Totali</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-[160px]">
+                          <span className="w-12 text-xl font-black text-[#003781] tabular-nums">{emp.grandTotal}</span>
+                          <div className="h-2 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[#003781]"
+                              style={{ width: `${Math.max(4, (emp.grandTotal / Math.max(employeeTotals[0]?.grandTotal || 1, 1)) * 100)}%` }}
+                            />
                           </div>
                         </div>
-                      </div>
-                      <div className="p-6 grid grid-cols-2 gap-4 flex-1">
-                        {categories.slice(0, 6).map(cat => (
-                          <div key={cat.id} className="flex items-center gap-3">
-                            <div className={cn("p-2 rounded-lg bg-slate-50", cat.color)}>
-                              <ReportCategoryGlyph category={cat} size={16} />
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{cat.label}</p>
-                              <p className="font-bold text-slate-700">{emp.totals[cat.id] || 0}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="p-4 bg-slate-50 border-t border-slate-200">
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5 min-w-[260px]">
+                          {categories
+                            .map(cat => ({ cat, total: emp.totals[cat.id] || 0 }))
+                            .filter(item => item.total > 0)
+                            .sort((a, b) => b.total - a.total)
+                            .slice(0, 3)
+                            .map(({ cat, total }) => (
+                              <span key={cat.id} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                                <span className={cat.color}>
+                                  <ReportCategoryGlyph category={cat} size={13} />
+                                </span>
+                                {cat.label}: {total}
+                              </span>
+                            ))}
+                          {emp.grandTotal === 0 && (
+                            <span className="text-xs font-semibold text-slate-400">Nessuna attività nel periodo</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         <button 
                           onClick={() => {
                             setSelectedEmployees([emp.uid]);
                             setSelectedTab('dettaglio_fl');
                           }}
-                          className="w-full py-2 text-xs font-bold text-[#003781] hover:bg-white rounded-xl transition-all flex items-center justify-center gap-2"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-[#003781] hover:bg-blue-50 transition-all"
                         >
-                          Vedi Dettaglio Completo
+                          Apri
                           <ChevronRight size={14} />
                         </button>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
+                    </tbody>
+                  </table>
                 </div>
               </section>
             </div>
@@ -619,10 +694,10 @@ export default function AdminDashboard() {
 
           {/* DETTAGLIO FL TAB */}
           {selectedTab === 'dettaglio_fl' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Employee Selection */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
                   <Users size={18} className="text-blue-600" />
                   Seleziona Dipendenti da Confrontare
                 </h3>
@@ -636,9 +711,9 @@ export default function AdminDashboard() {
                         );
                       }}
                       className={cn(
-                        "px-4 py-2 rounded-xl text-sm font-medium transition-all border",
+                        "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
                         selectedEmployees.includes(user.uid)
-                          ? "bg-[#003781] text-white border-[#003781] shadow-md"
+                          ? "bg-[#003781] text-white border-[#003781]"
                           : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                       )}
                     >
@@ -649,15 +724,15 @@ export default function AdminDashboard() {
               </div>
 
               {/* Category Selection for Comparison */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
                   <Filter size={18} className="text-blue-600" />
                   Seleziona Attività da Confrontare
                 </h3>
-                <div className="space-y-5">
+                <div className="space-y-3">
                   {sections.map(section => (
                     <div key={section.id}>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                      <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
                         {section.title}
                       </h4>
                       <div className="flex flex-wrap gap-2">
@@ -672,9 +747,9 @@ export default function AdminDashboard() {
                               );
                             }}
                             className={cn(
-                              "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
+                              "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                               selectedCategoriesFL.includes(cat.id)
-                                ? "bg-[#003781] text-white border-[#003781] shadow-md"
+                                ? "bg-[#003781] text-white border-[#003781]"
                                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                             )}
                           >
@@ -689,10 +764,10 @@ export default function AdminDashboard() {
               </div>
 
               {/* Comparison Chart */}
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-slate-800 mb-6">Confronto Performance</h3>
-                  <div className="h-[450px]">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <div className="xl:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="font-bold text-slate-800 mb-4">Confronto Performance</h3>
+                  <div className="h-[380px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={employeeComparisonData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -700,9 +775,9 @@ export default function AdminDashboard() {
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                         <Tooltip 
                           cursor={{ fill: '#f8fafc' }}
-                          contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                          contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 12px 20px -12px rgb(15 23 42 / 0.35)' }}
                         />
-                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: 12 }} />
                         {selectedCategoriesFL.map((catId, i) => (
                           <Bar 
                             key={catId} 
@@ -717,9 +792,9 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-slate-800 mb-6">Classifica Totale</h3>
-                  <div className="space-y-4">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="font-bold text-slate-800 mb-4">Classifica Totale</h3>
+                  <div className="space-y-2">
                     {[...employeeComparisonData]
                       .sort((a, b) => {
                         const sumA = categories.reduce((s, c) => s + (a[c.id] || 0), 0);
@@ -729,10 +804,10 @@ export default function AdminDashboard() {
                       .map((emp, i) => {
                         const total = categories.reduce((s, c) => s + (emp[c.id] || 0), 0);
                         return (
-                          <div key={emp.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <div key={emp.name} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
                             <div className="flex items-center gap-3">
-                              <span className="text-lg font-black text-slate-300">#{i+1}</span>
-                              <span className="font-bold text-slate-700">{emp.name}</span>
+                              <span className="text-sm font-black text-slate-300">#{i+1}</span>
+                              <span className="font-bold text-slate-700 text-sm">{emp.name}</span>
                             </div>
                             <span className="bg-[#003781] text-white px-3 py-1 rounded-full text-xs font-bold">{total} pt</span>
                           </div>
@@ -747,17 +822,17 @@ export default function AdminDashboard() {
 
           {/* STORICO TAB */}
           {selectedTab === 'storico' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Activity Selection */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
                   <TrendingUp size={18} className="text-blue-600" />
                   Seleziona Attività da Analizzare
                 </h3>
-                <div className="space-y-5">
+                <div className="space-y-3">
                   {sections.map(section => (
                     <div key={section.id}>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                      <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
                         {section.title}
                       </h4>
                       <div className="flex flex-wrap gap-2">
@@ -772,9 +847,9 @@ export default function AdminDashboard() {
                               );
                             }}
                             className={cn(
-                              "px-4 py-2 rounded-xl text-sm font-medium transition-all border flex items-center gap-2",
+                              "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                               selectedCategoriesStorico.includes(cat.id)
-                                ? "bg-[#003781] text-white border-[#003781] shadow-md"
+                                ? "bg-[#003781] text-white border-[#003781]"
                                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                             )}
                           >
@@ -789,8 +864,8 @@ export default function AdminDashboard() {
               </div>
 
               {/* History Chart */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between mb-8">
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-slate-800">Andamento Temporale</h3>
                   <div className="flex items-center gap-2">
                     <button 
@@ -816,16 +891,16 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 
-                <div className="h-[500px]">
+                <div className="h-[420px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={historyComparisonData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                       <Tooltip 
-                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                        contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 12px 20px -12px rgb(15 23 42 / 0.35)' }}
                       />
-                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: 12 }} />
                       {selectedCategoriesStorico.map((catId, i) => (
                         <Line 
                           key={catId} 
@@ -858,6 +933,56 @@ export default function AdminDashboard() {
   );
 }
 
+function StatCard({
+  icon,
+  label,
+  value,
+  compact = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 flex items-center gap-3 min-w-0">
+      <div className="shrink-0 w-9 h-9 rounded-lg bg-blue-50 text-[#003781] flex items-center justify-center">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className={cn("font-black text-slate-900 truncate", compact ? "text-base" : "text-2xl tabular-nums")}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  title,
+  meta,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h3 className="font-bold text-slate-800 flex items-center gap-2">
+        <span className="text-blue-600">{icon}</span>
+        {title}
+      </h3>
+      {meta && (
+        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1">
+          {meta}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ReportCategoryGlyph({
   category,
   size,
@@ -874,7 +999,7 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
     <button 
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+        "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold",
         active 
           ? "bg-white/10 text-white shadow-inner" 
           : "text-blue-200 hover:bg-white/5 hover:text-white"
@@ -891,7 +1016,7 @@ function FilterButton({ active, onClick, children }: { active: boolean, onClick:
     <button 
       onClick={onClick}
       className={cn(
-        "px-4 py-1.5 rounded-xl text-xs font-bold transition-all",
+        "px-3 py-1.5 rounded-md text-xs font-bold transition-all",
         active 
           ? "bg-[#003781] text-white shadow-sm" 
           : "text-slate-500 hover:bg-slate-50"
