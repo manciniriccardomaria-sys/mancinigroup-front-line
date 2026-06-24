@@ -258,6 +258,9 @@ service cloud.firestore {
         (!('callbackDate' in data) ||
           data.callbackDate is string &&
           data.callbackDate.matches('^\\d{4}-\\d{2}-\\d{2}$')) &&
+        (!('calledDate' in data) ||
+          data.calledDate is string &&
+          data.calledDate.matches('^\\d{4}-\\d{2}-\\d{2}$')) &&
         (data.status != 'da_richiamare' || 'callbackDate' in data);
     }
 
@@ -301,6 +304,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'callbackDate',
+          'calledDate',
           'assignedToUid',
           'assignedToEmail',
           'assignedToName',

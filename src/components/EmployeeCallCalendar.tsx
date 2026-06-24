@@ -189,9 +189,8 @@ export default function EmployeeCallCalendar() {
     const counts = new Map<string, number>();
     modeTasks.forEach(task => {
       if (!matchesCategorySelection(task, selectedCategories)) return;
-      let date = getTaskEffectiveDate(task);
-      if (!date || isTaskClosed(task.status)) return;
-      if (isTaskActionable(task, today)) date = today;
+      const date = getEmployeeCalendarDate(task, today);
+      if (!date) return;
       counts.set(date, (counts.get(date) || 0) + 1);
     });
     return counts;
@@ -202,8 +201,10 @@ export default function EmployeeCallCalendar() {
 
     return modeTasks
       .filter(task => {
-        const effectiveDate = getTaskEffectiveDate(task);
-        const isSelectedDay = effectiveDate === selectedDate;
+        const calendarDate = getEmployeeCalendarDate(task, today);
+        if (!calendarDate) return false;
+
+        const isSelectedDay = calendarDate === selectedDate;
         const isOverdue = selectedDate === today && isTaskActionable(task, today);
         const matchesSearch = !normalizedSearch || [
           task.clientName,
@@ -217,8 +218,8 @@ export default function EmployeeCallCalendar() {
           matchesCategorySelection(task, selectedCategories);
       })
       .sort((first, second) => {
-        const firstDate = getTaskEffectiveDate(first);
-        const secondDate = getTaskEffectiveDate(second);
+        const firstDate = getEmployeeCalendarDate(first, today) || getTaskEffectiveDate(first);
+        const secondDate = getEmployeeCalendarDate(second, today) || getTaskEffectiveDate(second);
         const dateComparison = firstDate.localeCompare(secondDate);
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
@@ -265,17 +266,24 @@ export default function EmployeeCallCalendar() {
   ) => {
     setSavingTaskId(task.id);
     setError('');
+    const updatePayload = {
+      status: nextStatus,
+      callbackDate: nextCallbackDate || deleteField(),
+      assignedToUid: currentUid,
+      assignedToEmail: currentEmail,
+      assignedToName: currentName,
+      updatedByUid: currentUid,
+      updatedByName: currentName,
+      updatedAt: serverTimestamp(),
+      ...(nextStatus === 'chiamato'
+        ? { calledDate: today }
+        : task.calledDate
+          ? { calledDate: deleteField() }
+          : {}),
+    };
+
     try {
-      await updateDoc(doc(db, 'call_tasks', task.id), {
-        status: nextStatus,
-        callbackDate: nextCallbackDate || deleteField(),
-        assignedToUid: currentUid,
-        assignedToEmail: currentEmail,
-        assignedToName: currentName,
-        updatedByUid: currentUid,
-        updatedByName: currentName,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, 'call_tasks', task.id), updatePayload);
       setCallbackTaskId('');
       setCallbackDate('');
     } catch (saveError) {
@@ -525,6 +533,7 @@ export default function EmployeeCallCalendar() {
             <div className="space-y-3">
               {filteredTasks.map(task => {
                 const effectiveDate = getTaskEffectiveDate(task);
+                const isCalled = task.status === 'chiamato';
                 const isOverdue = effectiveDate < today && !isTaskClosed(task.status);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
@@ -535,7 +544,9 @@ export default function EmployeeCallCalendar() {
                   <article
                     key={task.id}
                     className={`border rounded-lg p-4 ${
-                      isOverdue
+                      isCalled
+                        ? 'border-emerald-200 bg-emerald-50/60'
+                        : isOverdue
                         ? 'border-red-200 bg-red-50/40'
                         : 'border-slate-200 bg-white'
                     }`}
@@ -550,6 +561,11 @@ export default function EmployeeCallCalendar() {
                           {isOverdue && (
                             <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">
                               Arretrata · {format(parseISO(effectiveDate), 'dd/MM/yyyy')}
+                            </span>
+                          )}
+                          {isCalled && (
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold">
+                              Chiamato
                             </span>
                           )}
                         </div>
@@ -672,6 +688,19 @@ export default function EmployeeCallCalendar() {
       </section>
     </div>
   );
+}
+
+function getEmployeeCalendarDate(task: CallTask, today: string): string | undefined {
+  if (task.status === 'chiamato') {
+    return task.calledDate || getTaskEffectiveDate(task);
+  }
+
+  if (isTaskClosed(task.status)) return undefined;
+
+  const effectiveDate = getTaskEffectiveDate(task);
+  if (!effectiveDate) return undefined;
+
+  return isTaskActionable(task, today) ? today : effectiveDate;
 }
 
 function matchesCategorySelection(

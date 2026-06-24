@@ -69,6 +69,7 @@ export type CallTask = {
   eventDate: string;
   dueDate: string;
   status: CallStatusId;
+  calledDate?: string;
   callbackDate?: string;
   assignedToUid?: string;
   assignedToEmail?: string;
