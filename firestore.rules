@@ -29,8 +29,7 @@ service cloud.firestore {
           "nicolemancinigroup@gmail.com",
           "rossellamancinigroup@gmail.com",
           "s.angelamancinigroup@gmail.com",
-          "valeriamancinigroup@gmail.com",
-          "manciniriccardo9@gmail.com"
+          "valeriamancinigroup@gmail.com"
         ];
     }
 
