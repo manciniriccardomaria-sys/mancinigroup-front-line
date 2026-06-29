@@ -57,7 +57,14 @@ export interface UserProfile {
   role: 'employee' | 'admin';
 }
 
-export const AUTHORIZED_EMPLOYEES = [
+export interface AuthorizedEmployee {
+  name: string;
+  email: string;
+  sourceCodes: readonly string[];
+  canHelpOtherSources?: boolean;
+}
+
+export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
   {
     name: 'Marina Bartoli',
     email: 'b.marinamancinigroup@gmail.com',
@@ -92,6 +99,7 @@ export const AUTHORIZED_EMPLOYEES = [
     name: 'Gaetano Calo',
     email: 'gaetanocalo73@gmail.com',
     sourceCodes: ['032', '013'],
+    canHelpOtherSources: false,
   },
 ] as const;
 

@@ -73,6 +73,7 @@ export default function EmployeeCallCalendar() {
 
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
   const ownSourceCodes = employee?.sourceCodes || [];
+  const canHelpOtherSources = employee?.canHelpOtherSources !== false;
   const currentUid = auth.currentUser?.uid || '';
   const currentEmail = auth.currentUser?.email || '';
   const currentName = employee?.name || auth.currentUser?.displayName || 'Dipendente';
@@ -99,6 +100,13 @@ export default function EmployeeCallCalendar() {
       ...item.data(),
     } as Campaign)));
   }), []);
+
+  useEffect(() => {
+    if (!canHelpOtherSources && sourceMode === 'help') {
+      setSourceMode('mine');
+      setSelectedHelpSources([]);
+    }
+  }, [canHelpOtherSources, sourceMode]);
 
   const activeCampaigns = useMemo(
     () => campaigns.filter(campaign => campaign.active),
@@ -150,6 +158,7 @@ export default function EmployeeCallCalendar() {
     if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;
     const isMine = ownSourceCodes.some(code => code === task.sourceCode);
     if (sourceMode === 'mine') return isMine;
+    if (!canHelpOtherSources) return false;
     return !isMine &&
       selectedHelpSources.includes(getSourceKey(task)) &&
       (!task.assignedToUid || task.assignedToUid === currentUid);
@@ -157,6 +166,7 @@ export default function EmployeeCallCalendar() {
     enabledTasks,
     ownSourceCodes,
     sourceMode,
+    canHelpOtherSources,
     currentUid,
     today,
     selectedHelpSources,
@@ -334,22 +344,24 @@ export default function EmployeeCallCalendar() {
             >
               Le mie fonti
             </button>
-            <button
-              type="button"
-              onClick={() => setSourceMode('help')}
-              className={`px-3 py-2 rounded-md text-xs font-bold flex items-center gap-1.5 ${
-                sourceMode === 'help'
-                  ? 'bg-[#003781] text-white'
-                  : 'text-slate-600'
-              }`}
-            >
-              <HandHelping size={15} />
-              Aiuta altre fonti
-            </button>
+            {canHelpOtherSources && (
+              <button
+                type="button"
+                onClick={() => setSourceMode('help')}
+                className={`px-3 py-2 rounded-md text-xs font-bold flex items-center gap-1.5 ${
+                  sourceMode === 'help'
+                    ? 'bg-[#003781] text-white'
+                    : 'text-slate-600'
+                }`}
+              >
+                <HandHelping size={15} />
+                Aiuta altre fonti
+              </button>
+            )}
           </div>
         </div>
 
-        {sourceMode === 'help' && (
+        {canHelpOtherSources && sourceMode === 'help' && (
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
               <div>
