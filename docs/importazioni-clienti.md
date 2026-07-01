@@ -76,3 +76,9 @@ La chiamata viene programmata 10 giorni prima dell'anniversario successivo
 della data di uscita. Esempio: uscita il 16 giugno 2025, anniversario il
 16 giugno 2026 e data calcolata il 6 giugno 2026. Poiche' il 6 giugno 2026 e'
 sabato, la chiamata viene spostata a lunedi' 8 giugno 2026.
+
+Per il Winback si possono selezionare e importare piu' file Excel insieme, uno
+per ciascun mese di competenza disponibile. L'importazione e' cumulativa: i
+mesi gia' caricati non vengono cancellati o sostituiti. Se viene ricaricato lo
+stesso cliente con la stessa polizza e la stessa data di uscita, la chiamata
+esistente viene aggiornata o lasciata invariata.

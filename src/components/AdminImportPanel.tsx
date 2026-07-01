@@ -63,7 +63,7 @@ const IMPORT_CARDS: Array<{
   {
     kind: 'winback',
     title: 'Winback',
-    description: 'Calcola il richiamo 10 giorni prima dell’anniversario.',
+    description: 'Importa uno o più mesi e calcola il richiamo 10 giorni prima dell’anniversario.',
   },
 ];
 
@@ -78,7 +78,7 @@ export default function AdminImportPanel() {
   const [savingCampaign, setSavingCampaign] = useState(false);
   const [campaignError, setCampaignError] = useState('');
   const [campaignMessage, setCampaignMessage] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<Partial<Record<ImportKind, File>>>({});
+  const [selectedFiles, setSelectedFiles] = useState<Partial<Record<ImportKind, File[]>>>({});
   const [importingKind, setImportingKind] = useState<ImportKind | null>(null);
   const [importMessages, setImportMessages] = useState<Partial<Record<ImportKind, string>>>({});
 
@@ -174,25 +174,44 @@ export default function AdminImportPanel() {
   };
 
   const runImport = async (kind: ImportKind) => {
-    const file = selectedFiles[kind];
-    if (!file) return;
+    const files = selectedFiles[kind] || [];
+    if (files.length === 0) return;
 
     setImportingKind(kind);
     setImportMessages(previous => ({ ...previous, [kind]: '' }));
 
     try {
-      const parsed = await parseClientWorkbook(file, kind, campaigns);
-      const result = await importCallTasks(parsed);
+      const totals = {
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+        skippedRows: 0,
+        storedClients: 0,
+      };
+      const fileSummaries: string[] = [];
+
+      for (const file of files) {
+        const parsed = await parseClientWorkbook(file, kind, campaigns);
+        const result = await importCallTasks(parsed);
+        totals.created += result.created;
+        totals.updated += result.updated;
+        totals.unchanged += result.unchanged;
+        totals.skippedRows += result.skippedRows;
+        totals.storedClients += result.storedClients;
+        fileSummaries.push(`${file.name}: ${result.created} nuove, ${result.updated} aggiornate, ${result.unchanged} invariate`);
+      }
+
       setImportMessages(previous => ({
         ...previous,
         [kind]: [
-          `${result.created} nuove`,
-          `${result.updated} aggiornate`,
-          `${result.unchanged} invariate`,
+          `${totals.created} nuove`,
+          `${totals.updated} aggiornate`,
+          `${totals.unchanged} invariate`,
           ...(kind === 'newClients'
-            ? [`${result.storedClients} clienti memorizzati o aggiornati`]
+            ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
             : []),
-          `${result.skippedRows} righe saltate`,
+          `${totals.skippedRows} righe saltate`,
+          ...(files.length > 1 ? [`File: ${fileSummaries.join(' · ')}`] : []),
         ].join(' · '),
       }));
     } catch (error) {
@@ -367,15 +386,17 @@ export default function AdminImportPanel() {
           <h3 className="font-bold text-slate-800">Importazione Excel</h3>
           <p className="text-sm text-slate-500">
             I nuovi clienti restano memorizzati: le campagne create in seguito
-            generano automaticamente le relative chiamate.
+            generano automaticamente le relative chiamate. Il Winback accetta
+            più file mensili e li mantiene cumulativi.
           </p>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           {VISIBLE_IMPORT_CARDS.map(card => {
             const config = CLIENT_IMPORT_CONFIG[card.kind];
-            const file = selectedFiles[card.kind];
+            const files = selectedFiles[card.kind] || [];
             const isImporting = importingKind === card.kind;
+            const allowsMultipleFiles = card.kind === 'winback';
 
             return (
               <div key={card.kind} className="bg-white border border-slate-200 rounded-lg p-5">
@@ -396,24 +417,41 @@ export default function AdminImportPanel() {
 
                 <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">
                   <Upload size={18} />
-                  {file ? file.name : 'Seleziona file'}
+                  {files.length > 0
+                    ? allowsMultipleFiles
+                      ? `${files.length} file selezionati`
+                      : files[0].name
+                    : allowsMultipleFiles
+                      ? 'Seleziona uno o più file'
+                      : 'Seleziona file'}
                   <input
                     type="file"
                     accept=".xlsx"
+                    multiple={allowsMultipleFiles}
                     className="hidden"
                     onChange={event => {
-                      const selected = event.target.files?.[0];
-                      if (!selected) return;
+                      const selected = Array.from(event.target.files || []);
+                      if (selected.length === 0) return;
                       setSelectedFiles(previous => ({ ...previous, [card.kind]: selected }));
                       setImportMessages(previous => ({ ...previous, [card.kind]: '' }));
                     }}
                   />
                 </label>
 
+                {allowsMultipleFiles && files.length > 0 && (
+                  <div className="mt-2 text-xs text-slate-500 space-y-1 max-h-24 overflow-y-auto">
+                    {files.map(file => (
+                      <p key={`${file.name}-${file.lastModified}`} className="truncate">
+                        {file.name}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => runImport(card.kind)}
-                  disabled={!file || isImporting || importingKind !== null}
+                  disabled={files.length === 0 || isImporting || importingKind !== null}
                   className="mt-3 w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
                 >
                   {isImporting ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
