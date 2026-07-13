@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
+  BarChart3,
   CalendarClock,
   CheckCircle2,
   Clock3,
   Download,
   PhoneCall,
   Search,
+  Trophy,
 } from 'lucide-react';
 import { addDays, format, isValid, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -39,6 +41,17 @@ type WorkPeriod = 'today' | 'week' | 'month' | 'custom';
 type DateRange = {
   start: string;
   end: string;
+};
+type BreakdownSegment = {
+  id: string;
+  label: string;
+  count: number;
+  className: string;
+};
+type SourceRankingRow = {
+  sourceCode: string;
+  sourceName: string;
+  count: number;
 };
 
 export default function AdminCallCenter() {
@@ -229,6 +242,63 @@ export default function AdminCallCenter() {
   const workedUntilTodayPercent = possibleUntilToday.length > 0
     ? Math.round((workedUntilTodayCount / possibleUntilToday.length) * 100)
     : 0;
+  const expiredUntilTodayCount = possibleUntilToday.filter(task =>
+    !isTaskWorked(task) && isTaskExpired(task, today)
+  ).length;
+  const openValidUntilTodayCount = possibleUntilToday.filter(task =>
+    !isTaskWorked(task) && !isTaskExpired(task, today)
+  ).length;
+  const possibleBreakdownSegments: BreakdownSegment[] = [
+    {
+      id: 'worked',
+      label: 'Lavorate',
+      count: workedUntilTodayCount,
+      className: 'bg-emerald-500',
+    },
+    {
+      id: 'open',
+      label: 'Da chiamare valide',
+      count: openValidUntilTodayCount,
+      className: 'bg-blue-500',
+    },
+    {
+      id: 'expired',
+      label: 'Finestra scaduta',
+      count: expiredUntilTodayCount,
+      className: 'bg-amber-400',
+    },
+  ];
+  const sourceRanking = useMemo<SourceRankingRow[]>(() => {
+    const rows = new Map<string, SourceRankingRow>();
+
+    enabledTasks.forEach(task => {
+      if (
+        !isTaskWorked(task) ||
+        !isDateInRange(getTaskWorkedDate(task), workPeriodRange.start, workPeriodRange.end)
+      ) {
+        return;
+      }
+
+      const existing = rows.get(task.sourceCode);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+
+      rows.set(task.sourceCode, {
+        sourceCode: task.sourceCode,
+        sourceName: task.sourceName,
+        count: 1,
+      });
+    });
+
+    return [...rows.values()]
+      .sort((first, second) =>
+        second.count - first.count ||
+        first.sourceCode.localeCompare(second.sourceCode, 'it')
+      )
+      .slice(0, 8);
+  }, [enabledTasks, workPeriodRange]);
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -294,6 +364,42 @@ export default function AdminCallCenter() {
           detail={`${workedUntilTodayPercent}% fino a oggi`}
           icon={<PhoneCall size={18} />}
         />
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] gap-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-[#003781]">
+                <BarChart3 size={18} />
+                <h3 className="font-bold text-slate-800">Esploso chiamate possibili</h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Dal {formatDate(CALL_TRACKING_START_DATE)} a oggi, incluse le finestre scadute.
+              </p>
+            </div>
+            <p className="text-sm font-black text-slate-800 whitespace-nowrap">
+              {possibleUntilToday.length} totali
+            </p>
+          </div>
+
+          <ProgressBreakdown
+            total={possibleUntilToday.length}
+            segments={possibleBreakdownSegments}
+          />
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-[#003781]">
+            <Trophy size={18} />
+            <h3 className="font-bold text-slate-800">Classifica fonti</h3>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Chiamate lavorate nel periodo {formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}.
+          </p>
+
+          <SourceRanking rows={sourceRanking} total={workedPeriodCount} />
+        </div>
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
@@ -559,6 +665,93 @@ function Metric({
   );
 }
 
+function ProgressBreakdown({
+  total,
+  segments,
+}: {
+  total: number;
+  segments: BreakdownSegment[];
+}) {
+  const visibleSegments = segments.filter(segment => segment.count > 0);
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="h-9 bg-slate-100 rounded-lg overflow-hidden flex">
+        {visibleSegments.length > 0 ? visibleSegments.map(segment => (
+          <div
+            key={segment.id}
+            className={`${segment.className} h-full`}
+            style={{ width: `${getPercent(segment.count, total)}%` }}
+            title={`${segment.label}: ${segment.count} (${getPercent(segment.count, total)}%)`}
+          />
+        )) : (
+          <div className="h-full w-full bg-slate-100" />
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {segments.map(segment => (
+          <div key={segment.id} className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`w-2.5 h-2.5 rounded-full ${segment.className}`} />
+              <span className="text-xs font-semibold text-slate-600 truncate">
+                {segment.label}
+              </span>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-sm font-black text-slate-800">{segment.count}</p>
+              <p className="text-[11px] text-slate-400">{getPercent(segment.count, total)}%</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourceRanking({
+  rows,
+  total,
+}: {
+  rows: SourceRankingRow[];
+  total: number;
+}) {
+  const maxCount = rows[0]?.count || 0;
+
+  if (rows.length === 0) {
+    return (
+      <div className="mt-4 py-6 text-center text-sm text-slate-500">
+        Nessuna chiamata lavorata nel periodo.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {rows.map((row, index) => (
+        <div key={row.sourceCode} className="space-y-1.5">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <div className="min-w-0">
+              <span className="font-black text-slate-800 mr-2">{index + 1}.</span>
+              <span className="font-bold text-slate-700">{row.sourceCode}</span>
+              <span className="text-slate-500"> · {row.sourceName}</span>
+            </div>
+            <div className="font-black text-slate-800 whitespace-nowrap">
+              {row.count} · {getPercent(row.count, total)}%
+            </div>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#003781]"
+              style={{ width: `${getPercent(row.count, maxCount)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ViewButton({
   active,
   onClick,
@@ -708,7 +901,6 @@ function isDateInRange(date: string, start: string, end: string): boolean {
 function isTaskPossibleUntilToday(task: CallTask, today: string): boolean {
   if (!task.dueDate || task.dueDate > today) return false;
   if (task.dueDate < CALL_TRACKING_START_DATE) return false;
-  if (!isTaskWorked(task) && task.eventDate && task.eventDate < today) return false;
   return true;
 }
 
@@ -721,6 +913,11 @@ function formatRangeLabel(start: string, end: string): string {
   if (!start && !end) return '';
   if (start === end) return formatDate(start);
   return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
+function getPercent(value: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((value / total) * 100);
 }
 
 function matchesCategorySelection(
