@@ -8,11 +8,12 @@ import {
   PhoneCall,
   Search,
 } from 'lucide-react';
-import { addDays, format, parseISO } from 'date-fns';
+import { addDays, format, isValid, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { db } from '../firebase';
 import {
   Campaign,
+  CALL_TRACKING_START_DATE,
   CallTask,
   getTaskEffectiveDate,
   isTaskActionable,
@@ -33,7 +34,12 @@ import CallCategoryFilter, {
 } from './CallCategoryFilter';
 
 const PAGE_SIZE = 100;
-type OperationalView = 'today' | 'next7' | 'active' | 'history';
+type OperationalView = 'today' | 'next7' | 'active' | 'worked' | 'history';
+type WorkPeriod = 'today' | 'week' | 'month' | 'custom';
+type DateRange = {
+  start: string;
+  end: string;
+};
 
 export default function AdminCallCenter() {
   const [tasks, setTasks] = useState<CallTask[]>([]);
@@ -47,9 +53,18 @@ export default function AdminCallCenter() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [operationalView, setOperationalView] = useState<OperationalView>('today');
+  const [workPeriod, setWorkPeriod] = useState<WorkPeriod>('today');
+  const [workStartDate, setWorkStartDate] = useState('');
+  const [workEndDate, setWorkEndDate] = useState('');
   const [page, setPage] = useState(1);
   const today = getItalyDate();
   const nextSevenDays = format(addDays(parseISO(today), 7), 'yyyy-MM-dd');
+  const workPeriodRange = useMemo(() => getWorkPeriodRange(
+    workPeriod,
+    today,
+    workStartDate,
+    workEndDate,
+  ), [workPeriod, today, workStartDate, workEndDate]);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'call_tasks'), snapshot => {
@@ -143,6 +158,8 @@ export default function AdminCallCenter() {
           active: !isTaskClosed(task.status) &&
             !isTaskExpired(task, today) &&
             !isTaskBeforeTrackingStart(task),
+          worked: isTaskWorked(task) &&
+            isDateInRange(getTaskWorkedDate(task), workPeriodRange.start, workPeriodRange.end),
           history: isTaskClosed(task.status) ||
             isTaskExpired(task, today) ||
             isTaskBeforeTrackingStart(task),
@@ -174,6 +191,7 @@ export default function AdminCallCenter() {
     operationalView,
     today,
     nextSevenDays,
+    workPeriodRange,
   ]);
 
   useEffect(() => setPage(1), [
@@ -185,6 +203,9 @@ export default function AdminCallCenter() {
     startDate,
     endDate,
     operationalView,
+    workPeriod,
+    workStartDate,
+    workEndDate,
   ]);
 
   const todayCount = enabledTasks.filter(task => isTaskActionable(task, today)).length;
@@ -199,13 +220,22 @@ export default function AdminCallCenter() {
       effectiveDate > today &&
       effectiveDate <= nextSevenDays;
   }).length;
-  const completedCount = enabledTasks.filter(task => isTaskClosed(task.status)).length;
+  const workedPeriodCount = enabledTasks.filter(task =>
+    isTaskWorked(task) &&
+    isDateInRange(getTaskWorkedDate(task), workPeriodRange.start, workPeriodRange.end)
+  ).length;
+  const possibleUntilToday = enabledTasks.filter(task => isTaskPossibleUntilToday(task, today));
+  const workedUntilTodayCount = possibleUntilToday.filter(isTaskWorked).length;
+  const workedUntilTodayPercent = possibleUntilToday.length > 0
+    ? Math.round((workedUntilTodayCount / possibleUntilToday.length) * 100)
+    : 0;
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const exportCalls = () => {
     const headers = [
       'Data chiamata',
+      'Data lavorazione',
       'Cliente',
       'Telefono',
       'Categoria',
@@ -221,6 +251,7 @@ export default function AdminCallCenter() {
     ];
     const rows = filteredTasks.map(task => [
       formatDate(task.callbackDate || task.dueDate),
+      formatDate(getTaskWorkedDate(task)),
       task.clientName,
       task.phone,
       task.categoryLabel,
@@ -247,14 +278,66 @@ export default function AdminCallCenter() {
 
   return (
     <div className="space-y-6">
-      <section className="grid grid-cols-2 xl:grid-cols-4 border border-slate-200 bg-white rounded-lg overflow-hidden">
+      <section className="grid grid-cols-2 xl:grid-cols-5 border border-slate-200 bg-white rounded-lg overflow-hidden">
         <Metric label="Da lavorare oggi" value={todayCount} icon={<PhoneCall size={18} />} />
         <Metric label="Arretrate ancora valide" value={overdueCount} icon={<Clock3 size={18} />} />
         <Metric label="Prossimi 7 giorni" value={nextSevenCount} icon={<CalendarClock size={18} />} />
-        <Metric label="Completate" value={completedCount} icon={<CheckCircle2 size={18} />} />
+        <Metric
+          label="Lavorate nel periodo"
+          value={workedPeriodCount}
+          detail={formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}
+          icon={<CheckCircle2 size={18} />}
+        />
+        <Metric
+          label="Fatte / possibili"
+          value={`${workedUntilTodayCount}/${possibleUntilToday.length}`}
+          detail={`${workedUntilTodayPercent}% fino a oggi`}
+          icon={<PhoneCall size={18} />}
+        />
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="mb-4 flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Periodo chiamate effettuate
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <ViewButton active={workPeriod === 'today'} onClick={() => setWorkPeriod('today')}>
+                Oggi
+              </ViewButton>
+              <ViewButton active={workPeriod === 'week'} onClick={() => setWorkPeriod('week')}>
+                Settimana
+              </ViewButton>
+              <ViewButton active={workPeriod === 'month'} onClick={() => setWorkPeriod('month')}>
+                Mese
+              </ViewButton>
+              <ViewButton active={workPeriod === 'custom'} onClick={() => setWorkPeriod('custom')}>
+                Personalizzato
+              </ViewButton>
+            </div>
+          </div>
+
+          {workPeriod === 'custom' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:w-[360px]">
+              <input
+                type="date"
+                value={workStartDate}
+                onChange={event => setWorkStartDate(event.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                title="Inizio periodo lavorazione"
+              />
+              <input
+                type="date"
+                value={workEndDate}
+                onChange={event => setWorkEndDate(event.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                title="Fine periodo lavorazione"
+              />
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-2 mb-4">
           <ViewButton
             active={operationalView === 'today'}
@@ -273,6 +356,12 @@ export default function AdminCallCenter() {
             onClick={() => setOperationalView('active')}
           >
             Tutte le attive
+          </ViewButton>
+          <ViewButton
+            active={operationalView === 'worked'}
+            onClick={() => setOperationalView('worked')}
+          >
+            Lavorate nel periodo
           </ViewButton>
           <ViewButton
             active={operationalView === 'history'}
@@ -355,7 +444,7 @@ export default function AdminCallCenter() {
           <table className="w-full min-w-[1100px] text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                {['Data', 'Cliente', 'Categoria', 'Fonte', 'Stato', 'Assegnatario', 'Dettagli'].map(label => (
+                {['Data', 'Lavorata', 'Cliente', 'Categoria', 'Fonte', 'Stato', 'Assegnatario', 'Dettagli'].map(label => (
                   <th key={label} className="text-left px-4 py-3 font-bold">{label}</th>
                 ))}
               </tr>
@@ -365,6 +454,9 @@ export default function AdminCallCenter() {
                 <tr key={task.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 whitespace-nowrap font-semibold text-slate-700">
                     {formatDate(getTaskEffectiveDate(task))}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                    {formatDate(getTaskWorkedDate(task))}
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-bold text-slate-800">{task.clientName}</p>
@@ -376,7 +468,7 @@ export default function AdminCallCenter() {
                     <p className="text-xs text-slate-500 max-w-48">{task.sourceName}</p>
                   </td>
                   <td className="px-4 py-3">
-                    {isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)
+                    {shouldShowExpiredBadge(task, today)
                       ? <ExpiredBadge beforeTracking={isTaskBeforeTrackingStart(task)} />
                       : <StatusBadge status={task.status} />}
                   </td>
@@ -450,16 +542,19 @@ function Metric({
   label,
   value,
   icon,
+  detail,
 }: {
   label: string;
-  value: number;
+  value: React.ReactNode;
   icon: React.ReactNode;
+  detail?: string;
 }) {
   return (
     <div className="p-4 border-r border-b xl:border-b-0 border-slate-200 last:border-r-0">
       <div className="text-[#003781]">{icon}</div>
       <p className="text-2xl font-black text-slate-800 mt-2">{value}</p>
       <p className="text-xs font-bold text-slate-500">{label}</p>
+      {detail && <p className="text-[11px] text-slate-400 mt-1">{detail}</p>}
     </div>
   );
 }
@@ -535,9 +630,97 @@ function getStatusLabel(status: CallStatusId) {
 }
 
 function getOperationalStatus(task: CallTask, today: string) {
-  if (isTaskBeforeTrackingStart(task)) return 'Precedente all’attivazione';
-  if (isTaskExpired(task, today)) return 'Finestra scaduta';
+  if (shouldShowExpiredBadge(task, today)) {
+    return isTaskBeforeTrackingStart(task)
+      ? 'Precedente all’attivazione'
+      : 'Finestra scaduta';
+  }
   return getStatusLabel(task.status);
+}
+
+function getWorkPeriodRange(
+  period: WorkPeriod,
+  today: string,
+  customStart: string,
+  customEnd: string,
+): DateRange {
+  const todayDate = parseISO(today);
+
+  if (period === 'week') {
+    return {
+      start: format(startOfWeek(todayDate, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      end: today,
+    };
+  }
+
+  if (period === 'month') {
+    return {
+      start: format(startOfMonth(todayDate), 'yyyy-MM-dd'),
+      end: today,
+    };
+  }
+
+  if (period === 'custom') {
+    return {
+      start: customStart || today,
+      end: customEnd || today,
+    };
+  }
+
+  return { start: today, end: today };
+}
+
+function isTaskWorked(task: CallTask): boolean {
+  return task.status !== 'da_chiamare';
+}
+
+function getTaskWorkedDate(task: CallTask): string {
+  if (!isTaskWorked(task)) return '';
+  if (task.calledDate) return task.calledDate;
+  return getFirestoreDate(task.updatedAt) || getTaskEffectiveDate(task);
+}
+
+function getFirestoreDate(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof value.toDate === 'function'
+  ) {
+    const date = value.toDate();
+    return isValid(date) ? format(date, 'yyyy-MM-dd') : '';
+  }
+
+  if (typeof value === 'string') {
+    return value.slice(0, 10);
+  }
+
+  return '';
+}
+
+function isDateInRange(date: string, start: string, end: string): boolean {
+  if (!date) return false;
+  const normalizedStart = start || date;
+  const normalizedEnd = end || date;
+  return date >= normalizedStart && date <= normalizedEnd;
+}
+
+function isTaskPossibleUntilToday(task: CallTask, today: string): boolean {
+  if (!task.dueDate || task.dueDate > today) return false;
+  if (task.dueDate < CALL_TRACKING_START_DATE) return false;
+  if (!isTaskWorked(task) && task.eventDate && task.eventDate < today) return false;
+  return true;
+}
+
+function shouldShowExpiredBadge(task: CallTask, today: string): boolean {
+  return !isTaskWorked(task) &&
+    (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task));
+}
+
+function formatRangeLabel(start: string, end: string): string {
+  if (!start && !end) return '';
+  if (start === end) return formatDate(start);
+  return `${formatDate(start)} - ${formatDate(end)}`;
 }
 
 function matchesCategorySelection(
