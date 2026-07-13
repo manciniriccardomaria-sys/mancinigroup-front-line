@@ -37,7 +37,7 @@ import CallCategoryFilter, {
 
 const PAGE_SIZE = 100;
 type OperationalView = 'today' | 'next7' | 'active' | 'worked' | 'history';
-type WorkPeriod = 'today' | 'week' | 'month' | 'custom';
+type WorkPeriod = 'all' | 'today' | 'week' | 'month' | 'custom';
 type DateRange = {
   start: string;
   end: string;
@@ -66,7 +66,7 @@ export default function AdminCallCenter() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [operationalView, setOperationalView] = useState<OperationalView>('today');
-  const [workPeriod, setWorkPeriod] = useState<WorkPeriod>('today');
+  const [workPeriod, setWorkPeriod] = useState<WorkPeriod>('all');
   const [workStartDate, setWorkStartDate] = useState('');
   const [workEndDate, setWorkEndDate] = useState('');
   const [page, setPage] = useState(1);
@@ -366,6 +366,52 @@ export default function AdminCallCenter() {
         />
       </section>
 
+      <section className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Periodo analisi chiamate lavorate
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <ViewButton active={workPeriod === 'all'} onClick={() => setWorkPeriod('all')}>
+                Tutto
+              </ViewButton>
+              <ViewButton active={workPeriod === 'today'} onClick={() => setWorkPeriod('today')}>
+                Oggi
+              </ViewButton>
+              <ViewButton active={workPeriod === 'week'} onClick={() => setWorkPeriod('week')}>
+                Settimana
+              </ViewButton>
+              <ViewButton active={workPeriod === 'month'} onClick={() => setWorkPeriod('month')}>
+                Mese
+              </ViewButton>
+              <ViewButton active={workPeriod === 'custom'} onClick={() => setWorkPeriod('custom')}>
+                Personalizzato
+              </ViewButton>
+            </div>
+          </div>
+
+          {workPeriod === 'custom' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:w-[360px]">
+              <input
+                type="date"
+                value={workStartDate}
+                onChange={event => setWorkStartDate(event.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                title="Inizio periodo lavorazione"
+              />
+              <input
+                type="date"
+                value={workEndDate}
+                onChange={event => setWorkEndDate(event.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                title="Fine periodo lavorazione"
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] gap-4">
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <div className="flex items-start justify-between gap-4">
@@ -403,47 +449,6 @@ export default function AdminCallCenter() {
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
-        <div className="mb-4 flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-              Periodo chiamate effettuate
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <ViewButton active={workPeriod === 'today'} onClick={() => setWorkPeriod('today')}>
-                Oggi
-              </ViewButton>
-              <ViewButton active={workPeriod === 'week'} onClick={() => setWorkPeriod('week')}>
-                Settimana
-              </ViewButton>
-              <ViewButton active={workPeriod === 'month'} onClick={() => setWorkPeriod('month')}>
-                Mese
-              </ViewButton>
-              <ViewButton active={workPeriod === 'custom'} onClick={() => setWorkPeriod('custom')}>
-                Personalizzato
-              </ViewButton>
-            </div>
-          </div>
-
-          {workPeriod === 'custom' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:w-[360px]">
-              <input
-                type="date"
-                value={workStartDate}
-                onChange={event => setWorkStartDate(event.target.value)}
-                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                title="Inizio periodo lavorazione"
-              />
-              <input
-                type="date"
-                value={workEndDate}
-                onChange={event => setWorkEndDate(event.target.value)}
-                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                title="Fine periodo lavorazione"
-              />
-            </div>
-          )}
-        </div>
-
         <div className="flex flex-wrap gap-2 mb-4">
           <ViewButton
             active={operationalView === 'today'}
@@ -838,6 +843,13 @@ function getWorkPeriodRange(
   customEnd: string,
 ): DateRange {
   const todayDate = parseISO(today);
+
+  if (period === 'all') {
+    return {
+      start: CALL_TRACKING_START_DATE,
+      end: today,
+    };
+  }
 
   if (period === 'week') {
     return {
