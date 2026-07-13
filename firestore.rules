@@ -252,6 +252,8 @@ service cloud.firestore {
           'da_richiamare',
           'non_raggiungibile',
           'cambio_rottamazione_macchina',
+          'non_gradito',
+          'ripreso',
           'cliente_perso'
         ] &&
         data.sourceFingerprint is string &&

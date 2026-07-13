@@ -809,6 +809,8 @@ function StatusBadge({ status }: { status: CallStatusId }) {
     da_richiamare: 'bg-amber-50 text-amber-700',
     non_raggiungibile: 'bg-slate-100 text-slate-700',
     cambio_rottamazione_macchina: 'bg-violet-50 text-violet-700',
+    non_gradito: 'bg-orange-50 text-orange-700',
+    ripreso: 'bg-teal-50 text-teal-700',
     cliente_perso: 'bg-red-50 text-red-700',
   }[status];
 

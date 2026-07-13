@@ -8,6 +8,8 @@ export const CALL_STATUSES = [
     label: 'Cambio/Rottamaz. macchina',
     isDefault: false,
   },
+  { id: 'non_gradito', label: 'Non gradito', isDefault: false },
+  { id: 'ripreso', label: 'Ripreso', isDefault: false },
   { id: 'cliente_perso', label: 'Cliente perso', isDefault: false },
 ] as const;
 

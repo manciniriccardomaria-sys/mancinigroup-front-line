@@ -408,6 +408,8 @@ export function isTaskClosed(status: CallStatusId): boolean {
   return [
     'chiamato',
     'cambio_rottamazione_macchina',
+    'non_gradito',
+    'ripreso',
     'cliente_perso',
   ].includes(status);
 }
