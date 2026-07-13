@@ -412,7 +412,12 @@ export default function AdminImportPanel() {
 
                 <div className="mt-5 text-xs text-slate-500 space-y-1">
                   <p><strong>File:</strong> {config.fileName}</p>
-                  <p><strong>Scheda:</strong> {config.sheetName}</p>
+                  <p>
+                    <strong>Scheda:</strong>{' '}
+                    {card.kind === 'winback'
+                      ? `${config.sheetName} o primo foglio disponibile`
+                      : config.sheetName}
+                  </p>
                 </div>
 
                 <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">

@@ -57,7 +57,8 @@ La chiamata viene programmata 10 giorni prima della scadenza calcolata.
 
 ## 03_Winback_Clienti.xlsx
 
-Scheda: `Winback`
+Scheda: `Winback`. Se il file esportato dal portale non contiene una scheda
+con questo nome, l'import legge automaticamente il primo foglio disponibile.
 
 | Dato | Colonna |
 | --- | --- |

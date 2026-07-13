@@ -140,10 +140,12 @@ export async function parseClientWorkbook(
   await workbook.xlsx.load(arrayBuffer as never);
 
   const config = CLIENT_IMPORT_CONFIG[kind];
-  const worksheet = workbook.getWorksheet(config.sheetName);
+  const requestedSheetName = config.sheetName;
+  const worksheet = workbook.getWorksheet(requestedSheetName) ||
+    (kind === 'winback' ? workbook.worksheets[0] : undefined);
 
   if (!worksheet) {
-    throw new Error(`Scheda "${config.sheetName}" non trovata nel file.`);
+    throw new Error(`Scheda "${requestedSheetName}" non trovata nel file.`);
   }
 
   const tasks: ParsedImport['tasks'] = [];
@@ -185,7 +187,7 @@ export async function parseClientWorkbook(
   return {
     kind,
     fileName: file.name,
-    sheetName: config.sheetName,
+    sheetName: worksheet.name || requestedSheetName,
     rowCount: Math.max(0, worksheet.rowCount - 1),
     skippedRows,
     tasks,
