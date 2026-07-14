@@ -134,6 +134,8 @@ service cloud.firestore {
       return data.keys().hasAll(['enabled', 'values']) &&
         data.enabled is bool &&
         data.values is map && data.values.size() <= 100 &&
+        (!('byUser' in data) ||
+          data.byUser is map && data.byUser.size() <= 100) &&
         (!('updatedBy' in data) ||
           data.updatedBy is string && data.updatedBy.size() < 150) &&
         (!('incassi' in data) || data.incassi is int && data.incassi >= 0) &&

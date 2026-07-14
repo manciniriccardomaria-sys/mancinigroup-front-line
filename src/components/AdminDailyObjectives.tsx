@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   Check,
   Minus,
   Plus,
   Save,
   Target,
+  Users,
 } from 'lucide-react';
 import {
   DailyObjectives,
+  UserProfile,
   createEmptyDailyObjectives,
 } from '../constants';
 import { auth, db } from '../firebase';
@@ -22,10 +24,21 @@ export default function AdminDailyObjectives() {
   const [objectives, setObjectives] = useState<DailyObjectives>(
     createEmptyDailyObjectives
   );
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [selectedTarget, setSelectedTarget] = useState('all');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const { categories, sections, loading: categoriesLoading } = useReportCategories();
+
+  useEffect(() => onSnapshot(collection(db, 'users'), snapshot => {
+    setUsers(
+      snapshot.docs
+        .map(item => item.data() as UserProfile)
+        .filter(user => user.role === 'employee')
+        .sort((first, second) => first.name.localeCompare(second.name, 'it'))
+    );
+  }), []);
 
   useEffect(() => onSnapshot(
     doc(db, 'daily_objectives', 'current'),
@@ -33,31 +46,76 @@ export default function AdminDailyObjectives() {
       const stored = snapshot.exists()
         ? snapshot.data() as Partial<DailyObjectives> & Record<string, unknown>
         : {};
+      const baseValues = {
+        ...(stored.values || {}),
+        ...Object.fromEntries(
+          categories
+            .filter(category => typeof stored[category.id] === 'number')
+            .map(category => [category.id, stored[category.id] as number])
+        ),
+      };
+
       setObjectives({
         ...createEmptyDailyObjectives(),
         enabled: stored.enabled === true,
-        values: {
-          ...(stored.values || {}),
-          ...Object.fromEntries(
-            categories
-              .filter(category => typeof stored[category.id] === 'number')
-              .map(category => [category.id, stored[category.id] as number])
-          ),
-        },
+        values: baseValues,
+        byUser: stored.byUser || {},
         updatedBy: stored.updatedBy,
         updatedAt: stored.updatedAt,
       });
     }
   ), [categories]);
 
+  useEffect(() => {
+    if (
+      selectedTarget !== 'all' &&
+      !users.some(user => user.uid === selectedTarget)
+    ) {
+      setSelectedTarget('all');
+    }
+  }, [selectedTarget, users]);
+
+  const selectedTargetValues = useMemo(
+    () => getObjectiveValuesForTarget(objectives, selectedTarget),
+    [objectives, selectedTarget]
+  );
+
+  const selectedTargetName = selectedTarget === 'all'
+    ? 'tutte le fonti'
+    : users.find(user => user.uid === selectedTarget)?.name || 'fonte selezionata';
+
   const updateObjective = (categoryId: string, value: number) => {
     setSaved(false);
     setObjectives(previous => ({
       ...previous,
-      values: {
-        ...previous.values,
-        [categoryId]: Math.max(0, Math.floor(value || 0)),
-      },
+      ...(selectedTarget === 'all'
+        ? {
+            values: {
+              ...previous.values,
+              [categoryId]: Math.max(0, Math.floor(value || 0)),
+            },
+          }
+        : {
+            byUser: {
+              ...(previous.byUser || {}),
+              [selectedTarget]: {
+                ...(previous.byUser?.[selectedTarget] || {}),
+                values: {
+                  ...getObjectiveValuesForTarget(previous, selectedTarget),
+                  [categoryId]: Math.max(0, Math.floor(value || 0)),
+                },
+              },
+            },
+          }),
+    }));
+  };
+
+  const applySameObjectivesToAllSources = () => {
+    setSaved(false);
+    setSelectedTarget('all');
+    setObjectives(previous => ({
+      ...previous,
+      byUser: {},
     }));
   };
 
@@ -69,6 +127,7 @@ export default function AdminDailyObjectives() {
       await setDoc(doc(db, 'daily_objectives', 'current'), {
         enabled: objectives.enabled,
         values: objectives.values,
+        byUser: objectives.byUser || {},
         updatedBy: auth.currentUser?.displayName || auth.currentUser?.email || 'Agente',
         updatedAt: serverTimestamp(),
       });
@@ -82,7 +141,7 @@ export default function AdminDailyObjectives() {
   };
 
   const activeCount = categories
-    .filter(category => (objectives.values[category.id] || 0) > 0).length;
+    .filter(category => (selectedTargetValues[category.id] || 0) > 0).length;
 
   return (
     <div className="space-y-5">
@@ -96,7 +155,7 @@ export default function AdminDailyObjectives() {
           <div>
             <h3 className="font-bold text-slate-800">Obiettivi giornalieri Front Line</h3>
             <p className="text-sm text-slate-500 mt-1">
-              Le voci impostate a zero non vengono mostrate alle dipendenti.
+              Imposta obiettivi generali o personalizzati per singola fonte.
             </p>
           </div>
         </div>
@@ -107,7 +166,7 @@ export default function AdminDailyObjectives() {
               {objectives.enabled ? 'Obiettivi attivi' : 'Obiettivi disattivati'}
             </strong>
             <span className="block text-xs text-slate-500">
-              {activeCount} voci configurate
+              {activeCount} voci configurate per {selectedTargetName}
             </span>
           </span>
           <span className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -132,6 +191,58 @@ export default function AdminDailyObjectives() {
         </label>
       </section>
 
+      <section className="bg-white border border-slate-200 rounded-lg p-5">
+        <div className="mb-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-blue-50 text-[#003781] rounded-lg">
+              <Users size={19} />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800">Destinatario obiettivi</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Se una fonte non ha obiettivi personali, usa quelli di “tutte le fonti”.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={applySameObjectivesToAllSources}
+            className="px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            Applica uguale a tutte le fonti
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedTarget('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+              selectedTarget === 'all'
+                ? 'bg-[#003781] text-white border-[#003781]'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Tutte le fonti
+          </button>
+          {users.map(user => (
+            <button
+              key={user.uid}
+              type="button"
+              onClick={() => setSelectedTarget(user.uid)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                selectedTarget === user.uid
+                  ? 'bg-[#003781] text-white border-[#003781]'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {user.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {categoriesLoading && (
         <div className="py-10 text-center text-slate-500">
           Caricamento voci...
@@ -152,7 +263,7 @@ export default function AdminDailyObjectives() {
 
             <div className="divide-y divide-slate-100">
               {section.categories.map(category => {
-                const value = objectives.values[category.id] || 0;
+                const value = selectedTargetValues[category.id] || 0;
                 const CategoryIcon = getReportCategoryIcon(category.iconKey);
                 return (
                   <div
@@ -243,4 +354,12 @@ export default function AdminDailyObjectives() {
       </div>
     </div>
   );
+}
+
+function getObjectiveValuesForTarget(
+  objectives: DailyObjectives,
+  target: string,
+): Record<string, number> {
+  if (target === 'all') return objectives.values || {};
+  return objectives.byUser?.[target]?.values || objectives.values || {};
 }

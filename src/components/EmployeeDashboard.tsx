@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../firebase';
-import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import {
   DailyReport,
   DailyObjectives,
   CategoryId,
   createEmptyDailyObjectives,
+  getAuthorizedEmployee,
   getReportCategoryValue,
 } from '../constants';
 import {
@@ -29,6 +30,12 @@ import {
 } from 'lucide-react';
 import EmployeeCallCalendar from './EmployeeCallCalendar';
 import EmployeeNotices from './EmployeeNotices';
+import {
+  Campaign,
+  CallTask,
+  isTaskActionable,
+} from '../callCenter';
+import { isCallCategoryEnabled } from '../callWorkflowConfig';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -37,6 +44,8 @@ export default function EmployeeDashboard() {
   const [objectives, setObjectives] = useState<DailyObjectives>(
     createEmptyDailyObjectives
   );
+  const [callTasks, setCallTasks] = useState<CallTask[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
   const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'notices'>('report');
@@ -45,6 +54,7 @@ export default function EmployeeDashboard() {
     sections,
     loading: categoriesLoading,
   } = useReportCategories();
+  const employee = getAuthorizedEmployee(auth.currentUser?.email);
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -121,22 +131,66 @@ export default function EmployeeDashboard() {
       const stored = snapshot.exists()
         ? snapshot.data() as Partial<DailyObjectives> & Record<string, unknown>
         : {};
+      const baseValues = {
+        ...(stored.values || {}),
+        ...Object.fromEntries(
+          categories
+            .filter(category => typeof stored[category.id] === 'number')
+            .map(category => [category.id, stored[category.id] as number])
+        ),
+      };
+      const userObjectives = auth.currentUser?.uid && stored.byUser
+        ? stored.byUser[auth.currentUser.uid]
+        : undefined;
+
       setObjectives({
         ...createEmptyDailyObjectives(),
         enabled: stored.enabled === true,
-        values: {
-          ...(stored.values || {}),
-          ...Object.fromEntries(
-            categories
-              .filter(category => typeof stored[category.id] === 'number')
-              .map(category => [category.id, stored[category.id] as number])
-          ),
-        },
+        values: userObjectives?.values || baseValues,
+        byUser: stored.byUser || {},
         updatedBy: stored.updatedBy,
         updatedAt: stored.updatedAt,
       });
     }
   ), [categories]);
+
+  useEffect(() => onSnapshot(collection(db, 'call_tasks'), snapshot => {
+    setCallTasks(snapshot.docs.map(item => ({
+      id: item.id,
+      ...item.data(),
+    } as CallTask)));
+  }, callError => {
+    console.error('Error loading call notification count:', callError);
+  }), []);
+
+  useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
+    setCampaigns(snapshot.docs.map(item => ({
+      id: item.id,
+      ...item.data(),
+    } as Campaign)));
+  }), []);
+
+  const calendarNotificationCount = useMemo(() => {
+    const ownSourceCodes = employee?.sourceCodes || [];
+    const currentUid = auth.currentUser?.uid || '';
+    const activeCampaignIds = new Set(
+      campaigns
+        .filter(campaign => campaign.active)
+        .map(campaign => campaign.id)
+    );
+
+    return callTasks.filter(task => {
+      const isEnabled = isCallCategoryEnabled(task.category) &&
+        (
+          task.category !== 'campagna' ||
+          Boolean(task.campaignId && activeCampaignIds.has(task.campaignId))
+        );
+      const isOwnOrAssigned = ownSourceCodes.some(code => code === task.sourceCode) ||
+        task.assignedToUid === currentUid;
+
+      return isEnabled && isOwnOrAssigned && isTaskActionable(task, today);
+    }).length;
+  }, [callTasks, campaigns, employee, today]);
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
     if (!report || !auth.currentUser) return;
@@ -251,6 +305,15 @@ export default function EmployeeDashboard() {
           >
             <CalendarDays size={17} />
             Calendario chiamate
+            {calendarNotificationCount > 0 && (
+              <span className={`ml-1 inline-flex min-w-5 h-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black ${
+                selectedView === 'calendar'
+                  ? 'bg-white text-[#003781]'
+                  : 'bg-red-600 text-white'
+              }`}>
+                {calendarNotificationCount}
+              </span>
+            )}
           </button>
           <button
             type="button"

@@ -12,6 +12,11 @@ export type DailyReport = {
 export type DailyObjectives = {
   enabled: boolean;
   values: Record<string, number>;
+  byUser: Record<string, {
+    values: Record<string, number>;
+    updatedBy?: string;
+    updatedAt?: unknown;
+  }>;
   updatedBy?: string;
   updatedAt?: unknown;
 };
@@ -30,6 +35,7 @@ export function createEmptyDailyObjectives(): DailyObjectives {
   return {
     enabled: false,
     values: {},
+    byUser: {},
   };
 }
 
