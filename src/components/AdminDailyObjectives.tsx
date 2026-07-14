@@ -18,7 +18,6 @@ import {
   getReportCategoryIcon,
   useReportCategories,
 } from '../reportCatalog';
-import AdminReportCategories from './AdminReportCategories';
 
 export default function AdminDailyObjectives() {
   const [objectives, setObjectives] = useState<DailyObjectives>(
@@ -145,8 +144,6 @@ export default function AdminDailyObjectives() {
 
   return (
     <div className="space-y-5">
-      <AdminReportCategories categories={categories} />
-
       <section className="bg-white border border-slate-200 rounded-lg p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="p-2.5 bg-blue-50 text-[#003781] rounded-lg">

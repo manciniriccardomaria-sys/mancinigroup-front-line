@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Megaphone,
   Target,
+  ClipboardList,
 } from 'lucide-react';
 import { FileUp, PhoneCall } from 'lucide-react';
 import { 
@@ -61,6 +62,7 @@ import { it } from 'date-fns/locale';
 import AdminImportPanel from './AdminImportPanel';
 import AdminCallCenter from './AdminCallCenter';
 import AdminDailyObjectives from './AdminDailyObjectives';
+import AdminReportCategories from './AdminReportCategories';
 import AdminNotices from './AdminNotices';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 
@@ -68,6 +70,7 @@ type Tab =
   | 'overview'
   | 'dettaglio_fl'
   | 'storico'
+  | 'rendicontazione'
   | 'obiettivi'
   | 'avvisi'
   | 'chiamate'
@@ -458,10 +461,16 @@ export default function AdminDashboard() {
             label="Storico"
           />
           <NavItem
+            active={selectedTab === 'rendicontazione'}
+            onClick={() => setSelectedTab('rendicontazione')}
+            icon={<ClipboardList size={18} />}
+            label="Rendicontazione"
+          />
+          <NavItem
             active={selectedTab === 'obiettivi'}
             onClick={() => setSelectedTab('obiettivi')}
             icon={<Target size={18} />}
-            label="Rendicontazione"
+            label="Obiettivi"
           />
           <NavItem
             active={selectedTab === 'avvisi'}
@@ -504,7 +513,8 @@ export default function AdminDashboard() {
                 {selectedTab === 'overview' && 'Panoramica Agenzia'}
                 {selectedTab === 'dettaglio_fl' && 'Dettaglio Front Line'}
                 {selectedTab === 'storico' && 'Analisi Storica'}
-                {selectedTab === 'obiettivi' && 'Rendicontazione Giornaliera'}
+                {selectedTab === 'rendicontazione' && 'Rendicontazione Giornaliera'}
+                {selectedTab === 'obiettivi' && 'Obiettivi Front Line'}
                 {selectedTab === 'avvisi' && 'Avvisi Front Line'}
                 {selectedTab === 'chiamate' && 'Monitoraggio Chiamate'}
                 {selectedTab === 'importazioni' && 'Importazioni e Campagne'}
@@ -1045,6 +1055,8 @@ export default function AdminDashboard() {
           {selectedTab === 'chiamate' && <AdminCallCenter />}
 
           {selectedTab === 'importazioni' && <AdminImportPanel />}
+
+          {selectedTab === 'rendicontazione' && <AdminReportCategories categories={categories} />}
 
           {selectedTab === 'obiettivi' && <AdminDailyObjectives />}
 
