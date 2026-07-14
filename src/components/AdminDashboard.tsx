@@ -215,6 +215,27 @@ export default function AdminDashboard() {
     });
   }, [categories, filteredReports, selectedEmployees, users]);
 
+  const employeeActivitySummaryRows = useMemo(() => {
+    return employeeComparisonData.flatMap(employee => {
+      const selectedRows = selectedCategoriesFL.map(categoryId => {
+        const category = categories.find(item => item.id === categoryId);
+        return {
+          employeeName: employee.name as string,
+          categoryId,
+          category,
+          value: Number(employee[categoryId] || 0),
+        };
+      });
+
+      const total = selectedRows.reduce((sum, row) => sum + row.value, 0);
+
+      return selectedRows.map(row => ({
+        ...row,
+        employeeTotal: total,
+      }));
+    });
+  }, [categories, employeeComparisonData, selectedCategoriesFL]);
+
   // History Comparison Data (Activity vs Activity)
   const historyComparisonData = useMemo(() => {
     let start = parseISO(startDate);
@@ -817,6 +838,93 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+
+              <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-200">
+                  <SectionHeading
+                    icon={<BarChart3 size={18} />}
+                    title="Riepilogo attività per fonte"
+                    meta={`${selectedCategoriesFL.length} voci selezionate`}
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left font-bold">Fonte</th>
+                        <th className="px-4 py-2.5 text-left font-bold">Voce</th>
+                        <th className="px-4 py-2.5 text-right font-bold">Numero</th>
+                        <th className="px-4 py-2.5 text-right font-bold">Totale fonte</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {employeeActivitySummaryRows.map((row, index) => {
+                        const previous = employeeActivitySummaryRows[index - 1];
+                        const showEmployee = !previous ||
+                          previous.employeeName !== row.employeeName;
+
+                        return (
+                          <tr
+                            key={`${row.employeeName}-${row.categoryId}`}
+                            className="hover:bg-slate-50/70 transition-colors"
+                          >
+                            <td className="px-4 py-3">
+                              {showEmployee ? (
+                                <div className="flex items-center gap-3 min-w-[220px]">
+                                  <div className="w-8 h-8 rounded-lg bg-[#003781] flex items-center justify-center text-white font-black text-xs">
+                                    {row.employeeName.charAt(0)}
+                                  </div>
+                                  <span className="font-bold text-slate-800">
+                                    {row.employeeName}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 min-w-[260px]">
+                                {row.category && (
+                                  <span className={cn("shrink-0", row.category.color)}>
+                                    <ReportCategoryGlyph category={row.category} size={16} />
+                                  </span>
+                                )}
+                                <span className="font-semibold text-slate-700">
+                                  {row.category?.label || row.categoryId}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className={cn(
+                                "font-black tabular-nums",
+                                row.value > 0 ? "text-slate-900" : "text-slate-300"
+                              )}>
+                                {row.value}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {showEmployee ? (
+                                <span className="inline-flex justify-end min-w-12 rounded-full bg-[#003781] px-3 py-1 text-xs font-bold text-white tabular-nums">
+                                  {row.employeeTotal}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {employeeActivitySummaryRows.length === 0 && (
+                  <div className="py-10 text-center text-sm text-slate-500">
+                    Nessuna fonte selezionata.
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
