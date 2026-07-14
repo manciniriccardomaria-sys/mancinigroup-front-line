@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { db, auth } from '../firebase';
 import { collection, doc, query, onSnapshot, orderBy, setDoc } from 'firebase/firestore';
 import {
@@ -96,6 +96,7 @@ export default function AdminDashboard() {
     'emissRetailSe',
   ]);
   const [selectedCategoriesStorico, setSelectedCategoriesStorico] = useState<CategoryId[]>(['incassi']);
+  const employeeSelectionInitializedRef = useRef(false);
   const { categories, sections, loading: categoriesLoading } = useReportCategories();
 
   useEffect(() => {
@@ -149,9 +150,9 @@ export default function AdminDashboard() {
 
       const employees = synchronizedUsers.filter(u => u.role === 'employee');
       setUsers(employees);
-      // Default select all employees for comparison
-      if (selectedEmployees.length === 0) {
+      if (!employeeSelectionInitializedRef.current) {
         setSelectedEmployees(employees.map(e => e.uid));
+        employeeSelectionInitializedRef.current = true;
       }
     }, (usersError) => {
       console.error('Error loading users:', usersError);
@@ -718,10 +719,28 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               {/* Employee Selection */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                  <Users size={18} className="text-blue-600" />
-                  Seleziona Dipendenti da Confrontare
-                </h3>
+                <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                    <Users size={18} className="text-blue-600" />
+                    Seleziona Fonti da Confrontare
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmployees(users.map(user => user.uid))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      Seleziona tutto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmployees([])}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      Pulisci tutto
+                    </button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {users.map(user => (
                     <button
@@ -746,10 +765,28 @@ export default function AdminDashboard() {
 
               {/* Category Selection for Comparison */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                  <Filter size={18} className="text-blue-600" />
-                  Seleziona Attività da Confrontare
-                </h3>
+                <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                    <Filter size={18} className="text-blue-600" />
+                    Seleziona Attività da Confrontare
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategoriesFL(categories.map(category => category.id))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      Seleziona tutto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategoriesFL([])}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      Pulisci tutto
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   {sections.map(section => (
                     <div key={section.id}>
@@ -763,7 +800,7 @@ export default function AdminDashboard() {
                             onClick={() => {
                               setSelectedCategoriesFL(prev =>
                                 prev.includes(cat.id)
-                                  ? (prev.length > 1 ? prev.filter(id => id !== cat.id) : prev)
+                                  ? prev.filter(id => id !== cat.id)
                                   : [...prev, cat.id]
                               );
                             }}
@@ -785,8 +822,8 @@ export default function AdminDashboard() {
               </div>
 
               {/* Comparison Chart */}
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                <div className="xl:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+              {selectedEmployees.length > 1 && selectedCategoriesFL.length > 0 && (
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                   <h3 className="font-bold text-slate-800 mb-4">Confronto Performance</h3>
                   <div className="h-[380px]">
                     <ResponsiveContainer width="100%" height="100%">
@@ -812,32 +849,7 @@ export default function AdminDashboard() {
                     </ResponsiveContainer>
                   </div>
                 </div>
-
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-slate-800 mb-4">Classifica Totale</h3>
-                  <div className="space-y-2">
-                    {[...employeeComparisonData]
-                      .sort((a, b) => {
-                        const sumA = categories.reduce((s, c) => s + (a[c.id] || 0), 0);
-                        const sumB = categories.reduce((s, c) => s + (b[c.id] || 0), 0);
-                        return sumB - sumA;
-                      })
-                      .map((emp, i) => {
-                        const total = categories.reduce((s, c) => s + (emp[c.id] || 0), 0);
-                        return (
-                          <div key={emp.name} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm font-black text-slate-300">#{i+1}</span>
-                              <span className="font-bold text-slate-700 text-sm">{emp.name}</span>
-                            </div>
-                            <span className="bg-[#003781] text-white px-3 py-1 rounded-full text-xs font-bold">{total} pt</span>
-                          </div>
-                        );
-                      })
-                    }
-                  </div>
-                </div>
-              </div>
+              )}
 
               <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-slate-200">
@@ -921,7 +933,9 @@ export default function AdminDashboard() {
 
                 {employeeActivitySummaryRows.length === 0 && (
                   <div className="py-10 text-center text-sm text-slate-500">
-                    Nessuna fonte selezionata.
+                    {selectedEmployees.length === 0
+                      ? 'Nessuna fonte selezionata.'
+                      : 'Nessuna voce selezionata.'}
                   </div>
                 )}
               </section>
