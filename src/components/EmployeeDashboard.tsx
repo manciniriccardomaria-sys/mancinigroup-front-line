@@ -108,11 +108,13 @@ export default function EmployeeDashboard() {
           setLoading(false);
         }, (snapshotError) => {
           console.error('Error loading daily report:', snapshotError);
+          setReport(previous => previous || initialReport);
           setError(getReportErrorMessage(snapshotError));
           setLoading(false);
         });
       } catch (initializationError) {
         console.error('Error initializing daily report:', initializationError);
+        setReport(initialReport);
         setError(getReportErrorMessage(initializationError));
         setLoading(false);
       }
@@ -228,7 +230,7 @@ export default function EmployeeDashboard() {
     );
   }
 
-  if (error) {
+  if (error && !report) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-red-100 text-center">
@@ -282,6 +284,12 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
+        {error && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+            {error} Le modifiche al report potrebbero non essere salvate finché Firestore non torna disponibile.
+          </div>
+        )}
+
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 bg-white border border-slate-200 p-1 rounded-lg w-full sm:w-fit">
           <button
             type="button"
@@ -521,5 +529,17 @@ function getReportErrorMessage(error: unknown) {
     return 'Firebase ha rifiutato l\'accesso. Pubblica le regole Firestore aggiornate e riprova.';
   }
 
-  return 'Non e stato possibile caricare il report giornaliero. Controlla la connessione e riprova.';
+  if (code.includes('resource-exhausted')) {
+    return 'Firestore ha esaurito o sta aggiornando la capacità disponibile.';
+  }
+
+  if (code.includes('unavailable') || code.includes('deadline-exceeded')) {
+    return 'Firestore non è temporaneamente raggiungibile.';
+  }
+
+  if (error instanceof Error && error.message === 'firestore-timeout') {
+    return 'Firestore sta impiegando troppo tempo a rispondere.';
+  }
+
+  return 'Non è stato possibile caricare il report giornaliero.';
 }
