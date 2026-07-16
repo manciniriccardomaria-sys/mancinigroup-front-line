@@ -397,20 +397,20 @@ service cloud.firestore {
     }
 
     match /campaigns/{campaignId} {
-      allow read: if isApprovedUserEmail();
+      allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /notices/{noticeId} {
-      allow read: if isApprovedUserEmail();
+      allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() &&
         isValidNotice(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /daily_objectives/{objectiveId} {
-      allow read: if isApprovedUserEmail();
+      allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() &&
         objectiveId == 'current' &&
         isValidDailyObjectives(request.resource.data);
@@ -418,14 +418,14 @@ service cloud.firestore {
     }
 
     match /report_categories/{categoryId} {
-      allow read: if isApprovedUserEmail();
+      allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() &&
         isValidReportCategory(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /call_tasks/{taskId} {
-      allow read: if isApprovedUserEmail();
+      allow get, list: if isApprovedUserEmail();
       allow create: if isAdmin() && isValidCallTask(request.resource.data);
       allow update: if isValidCallTask(request.resource.data) &&
         (isAdmin() || employeeCanUpdateCallTask());
