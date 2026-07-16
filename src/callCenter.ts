@@ -361,6 +361,10 @@ export async function syncCampaignTasks(
 
   if (isAnnualExpirationCampaign(campaign)) {
     const expirationRecords = await loadStoredAnnualExpirationRecords();
+    const tasks = expirationRecords.flatMap(record =>
+      buildAnnualExpirationCampaignTasks(record, [campaign])
+    );
+    await pruneOpenCampaignTasks(campaign.id, tasks);
 
     return importCallTasks({
       kind: 'expirations',
@@ -368,9 +372,7 @@ export async function syncCampaignTasks(
       sheetName: CLIENT_IMPORT_CONFIG.expirations.sheetName,
       rowCount: expirationRecords.length,
       skippedRows: 0,
-      tasks: expirationRecords.flatMap(record =>
-        buildAnnualExpirationCampaignTasks(record, [campaign])
-      ),
+      tasks,
     });
   }
 
@@ -380,16 +382,54 @@ export async function syncCampaignTasks(
     ...item.data(),
   } as NewClientRecord));
 
+  const tasks = clients.flatMap(client =>
+    buildCampaignTasksForClient(client, [campaign])
+  );
+  await pruneOpenCampaignTasks(campaign.id, tasks);
+
   return importCallTasks({
     kind: 'newClients',
     fileName: 'Clienti memorizzati',
     sheetName: CLIENT_IMPORT_CONFIG.newClients.sheetName,
     rowCount: clients.length,
     skippedRows: 0,
-    tasks: clients.flatMap(client =>
-      buildCampaignTasksForClient(client, [campaign])
-    ),
+    tasks,
   });
+}
+
+async function pruneOpenCampaignTasks(
+  campaignId: string | undefined,
+  nextTasks: ParsedImport['tasks'],
+): Promise<void> {
+  if (!campaignId) return;
+
+  const nextIds = new Set(nextTasks.map(task => task.id));
+  const nextLogicalKeys = new Set(nextTasks.map(task => getTaskLogicalKey(task)));
+  const existingSnapshot = await getDocs(
+    query(collection(db, 'call_tasks'), where('campaignId', '==', campaignId))
+  );
+  let batch = writeBatch(db);
+  let batchSize = 0;
+
+  const commitBatch = async () => {
+    if (batchSize === 0) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    batchSize = 0;
+  };
+
+  for (const item of existingSnapshot.docs) {
+    const task = item.data() as Partial<CallTask>;
+    const isStillGenerated = nextIds.has(item.id) ||
+      nextLogicalKeys.has(getTaskLogicalKey(task));
+    if (isStillGenerated || task.status !== 'da_chiamare') continue;
+
+    batch.delete(doc(db, 'call_tasks', item.id));
+    batchSize += 1;
+    if (batchSize >= 400) await commitBatch();
+  }
+
+  await commitBatch();
 }
 
 async function importNewClientRecords(
@@ -734,10 +774,10 @@ function buildAnnualExpirationCampaignTasks(
     if (daysBeforeExpiration < 1) return undefined;
 
     const eventDate = parseISO(record.eventDate);
-    const dueDate = applyMinimumDate(
-      adjustWeekendToMonday(subDays(eventDate, daysBeforeExpiration)),
-      campaign.startDate
-    );
+    const dueDate = adjustWeekendToMonday(subDays(eventDate, daysBeforeExpiration));
+    if (campaign.startDate && dueDate < parseISO(campaign.startDate)) {
+      return undefined;
+    }
     const identity = [
       'annual-expiration-campaign',
       campaign.id,
@@ -784,12 +824,6 @@ export function getNextExpirationEvent(
   }
 
   return eventDate;
-}
-
-function applyMinimumDate(date: Date, minimumDate?: string): Date {
-  if (!minimumDate) return date;
-  const parsedMinimumDate = parseISO(minimumDate);
-  return date < parsedMinimumDate ? parsedMinimumDate : date;
 }
 
 export function getCampaignKind(campaign: Campaign): CampaignKind {

@@ -439,7 +439,8 @@ export default function AdminImportPanel() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003781]">
-                  Questa campagna crea chiamate a X giorni dalla data in colonna AH del file Scadenze clienti.
+                  Questa campagna crea chiamate a X giorni dalla data in colonna AH.
+                  Le chiamate calcolate prima della data inizio vengono escluse.
                 </div>
                 <label className="block">
                   <span className="text-xs font-bold text-slate-600">Giorni prima della scadenza</span>
