@@ -24,7 +24,7 @@ import {
   AUTHORIZED_EMPLOYEES,
 } from './constants';
 import { CLIENT_IMPORT_CONFIG } from './clientImportConfig';
-import { CallStatusId, isCallCategoryEnabled } from './callWorkflowConfig';
+import { CallStatusId } from './callWorkflowConfig';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 
 export type ImportKind = 'newClients' | 'expirations' | 'winback';
@@ -34,11 +34,16 @@ export type CallCategory =
   | 'scadenza_annuale'
   | 'winback';
 
+export type CampaignKind = 'newClients' | 'annualExpirations';
+
 export type Campaign = {
   id: string;
   name: string;
   description: string;
-  monthsAfterStart: number;
+  campaignKind?: CampaignKind;
+  monthsAfterStart?: number;
+  daysBeforeExpiration?: number;
+  startDate?: string;
   active: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -98,6 +103,24 @@ export type NewClientRecord = {
   createdAt?: unknown;
 };
 
+export type ExpirationRecord = {
+  id: string;
+  clientName: string;
+  phone: string;
+  sourceCode: string;
+  sourceName: string;
+  sourceOwnerEmail: string;
+  sourceOwnerName: string;
+  policyNumber: string;
+  policyType: string;
+  expirationType: 'A';
+  vehiclePlate: string;
+  eventDate: string;
+  sourceFingerprint: string;
+  importedAt?: unknown;
+  createdAt?: unknown;
+};
+
 export type ParsedImport = {
   kind: ImportKind;
   fileName: string;
@@ -106,6 +129,7 @@ export type ParsedImport = {
   skippedRows: number;
   tasks: Array<Omit<CallTask, 'status' | 'id'> & { id: string }>;
   newClients?: NewClientRecord[];
+  expirationRecords?: ExpirationRecord[];
 };
 
 export type ImportResult = {
@@ -116,6 +140,7 @@ export type ImportResult = {
   totalRows: number;
   generatedTasks: number;
   storedClients: number;
+  storedExpirations: number;
 };
 
 type WorksheetLike = {
@@ -150,7 +175,10 @@ export async function parseClientWorkbook(
 
   const tasks: ParsedImport['tasks'] = [];
   const newClients: NewClientRecord[] = [];
+  const expirationRecords: ExpirationRecord[] = [];
   const activeCampaigns = campaigns.filter(item => item.active);
+  const activeNewClientCampaigns = activeCampaigns.filter(isNewClientCampaign);
+  const activeAnnualExpirationCampaigns = activeCampaigns.filter(isAnnualExpirationCampaign);
   let skippedRows = 0;
 
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
@@ -166,7 +194,26 @@ export async function parseClientWorkbook(
       }
 
       newClients.push(client);
-      tasks.push(...buildCampaignTasksForClient(client, activeCampaigns));
+      tasks.push(...buildCampaignTasksForClient(client, activeNewClientCampaigns));
+      continue;
+    }
+
+    if (kind === 'expirations') {
+      const expirationRecord = buildAnnualExpirationRecord(
+        worksheet as WorksheetLike,
+        rowNumber,
+      );
+
+      if (!expirationRecord) {
+        skippedRows += 1;
+        continue;
+      }
+
+      expirationRecords.push(expirationRecord);
+      tasks.push(...buildAnnualExpirationCampaignTasks(
+        expirationRecord,
+        activeAnnualExpirationCampaigns,
+      ));
       continue;
     }
 
@@ -192,12 +239,16 @@ export async function parseClientWorkbook(
     skippedRows,
     tasks,
     ...(kind === 'newClients' ? { newClients } : {}),
+    ...(kind === 'expirations' ? { expirationRecords } : {}),
   };
 }
 
 export async function importCallTasks(parsed: ParsedImport): Promise<ImportResult> {
   const storedClients = parsed.newClients
     ? await importNewClientRecords(parsed.newClients)
+    : 0;
+  const storedExpirations = parsed.expirationRecords
+    ? await importExpirationRecords(parsed.expirationRecords)
     : 0;
   const existingSnapshot = await getDocs(
     query(collection(db, 'call_tasks'), where('importType', '==', parsed.kind))
@@ -275,6 +326,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     totalRows: parsed.rowCount,
     generatedTasks: parsed.tasks.length,
     storedClients,
+    storedExpirations,
   };
 
   await addDoc(collection(db, 'import_runs'), {
@@ -300,7 +352,23 @@ export async function syncCampaignTasks(
       totalRows: 0,
       generatedTasks: 0,
       storedClients: 0,
+      storedExpirations: 0,
     };
+  }
+
+  if (isAnnualExpirationCampaign(campaign)) {
+    const expirationRecords = await loadStoredAnnualExpirationRecords();
+
+    return importCallTasks({
+      kind: 'expirations',
+      fileName: 'Scadenze annuali memorizzate',
+      sheetName: CLIENT_IMPORT_CONFIG.expirations.sheetName,
+      rowCount: expirationRecords.length,
+      skippedRows: 0,
+      tasks: expirationRecords.flatMap(record =>
+        buildAnnualExpirationCampaignTasks(record, [campaign])
+      ),
+    });
   }
 
   const clientsSnapshot = await getDocs(collection(db, 'new_clients'));
@@ -364,8 +432,80 @@ async function importNewClientRecords(
   return storedClients;
 }
 
+async function importExpirationRecords(
+  expirations: ExpirationRecord[],
+): Promise<number> {
+  const existingSnapshot = await getDocs(collection(db, 'expiration_records'));
+  const existingById = new Map(
+    existingSnapshot.docs.map(item => [
+      item.id,
+      item.data().sourceFingerprint as string | undefined,
+    ])
+  );
+
+  let storedExpirations = 0;
+  let batch = writeBatch(db);
+  let batchSize = 0;
+
+  const commitBatch = async () => {
+    if (batchSize === 0) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    batchSize = 0;
+  };
+
+  for (const expiration of expirations) {
+    const previousFingerprint = existingById.get(expiration.id);
+    if (previousFingerprint === expiration.sourceFingerprint) continue;
+
+    batch.set(doc(db, 'expiration_records', expiration.id), {
+      ...expiration,
+      importedAt: serverTimestamp(),
+      ...(previousFingerprint === undefined
+        ? { createdAt: serverTimestamp() }
+        : {}),
+    }, { merge: true });
+    batchSize += 1;
+    storedExpirations += 1;
+
+    if (batchSize >= 400) await commitBatch();
+  }
+
+  await commitBatch();
+  return storedExpirations;
+}
+
+async function loadStoredAnnualExpirationRecords(): Promise<ExpirationRecord[]> {
+  const snapshot = await getDocs(collection(db, 'expiration_records'));
+  const records = snapshot.docs.map(item => ({
+    id: item.id,
+    ...item.data(),
+  } as ExpirationRecord));
+
+  if (records.length > 0) return records;
+
+  const fallbackSnapshot = await getDocs(
+    query(collection(db, 'call_tasks'), where('category', '==', 'scadenza_annuale'))
+  );
+
+  return fallbackSnapshot.docs.map(item => annualExpirationRecordFromTask(
+    item.id,
+    item.data() as CallTask,
+  )).filter((record): record is ExpirationRecord => Boolean(record));
+}
+
 function getTaskLogicalKey(task: Partial<CallTask>): string {
   if (task.importType === 'expirations') {
+    if (task.category === 'campagna') {
+      return [
+        task.importType,
+        task.campaignId,
+        task.policyNumber,
+        task.expirationType,
+        task.eventDate,
+      ].join('|');
+    }
+
     return [
       task.importType,
       task.policyNumber,
@@ -430,10 +570,6 @@ export function isTaskCampaignWindowOpen(
   task: CallTask,
   referenceDate = getItalyDate(),
 ): boolean {
-  if (task.category === 'scadenza_annuale') {
-    return referenceDate >= CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignStartDate;
-  }
-
   return true;
 }
 
@@ -454,11 +590,6 @@ function buildTasksForRow(
   rowNumber: number,
   kind: ImportKind,
 ): ParsedImport['tasks'] {
-  if (kind === 'expirations') {
-    const task = buildExpirationTask(worksheet, rowNumber);
-    return task ? [task] : [];
-  }
-
   const task = buildWinbackTask(worksheet, rowNumber);
   return task ? [task] : [];
 }
@@ -504,10 +635,13 @@ function buildCampaignTasksForClient(
   client: NewClientRecord,
   campaigns: Campaign[],
 ): ParsedImport['tasks'] {
-  return campaigns.map(campaign => {
+  return campaigns.filter(isNewClientCampaign).map(campaign => {
+    const monthsAfterStart = campaign.monthsAfterStart || 0;
+    if (monthsAfterStart < 1) return undefined;
+
     const startDate = parseISO(client.relationshipStartDate);
     const eventDate = adjustWeekendToMonday(
-      addMonths(startDate, campaign.monthsAfterStart)
+      addMonths(startDate, monthsAfterStart)
     );
     const identity = [
       'campaign',
@@ -539,13 +673,13 @@ function buildCampaignTasksForClient(
       eventDate: format(eventDate, DATE_FORMAT),
       dueDate: format(eventDate, DATE_FORMAT),
     });
-  });
+  }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
 }
 
-function buildExpirationTask(
+function buildAnnualExpirationRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
-): ParsedImport['tasks'][number] | undefined {
+): ExpirationRecord | undefined {
   const config = CLIENT_IMPORT_CONFIG.expirations;
   const columns = config.columns;
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
@@ -563,45 +697,82 @@ function buildExpirationTask(
     return undefined;
   }
 
-  const category: CallCategory = expirationType === 'R'
-    ? 'scadenza_rata'
-    : 'scadenza_annuale';
-  if (!isCallCategoryEnabled(category)) return undefined;
+  if (expirationType !== 'A') return undefined;
 
   const eventDate = getNextExpirationEvent(
     baseDate,
     expirationRule.monthsToAdd,
     parseISO(getItalyDate()),
   );
-  const reminderDays = expirationRule.reminderDays ?? config.scheduleRule.reminderDays;
-  const dueDate = applyMinimumDate(
-    adjustWeekendToMonday(subDays(eventDate, reminderDays)),
-    category === 'scadenza_annuale'
-      ? config.scheduleRule.annualCampaignStartDate
-      : undefined
-  );
   const identity = [
-    'expiration',
+    'annual-expiration-record',
     policyNumber,
-    expirationType,
     format(eventDate, DATE_FORMAT),
   ].join('|');
-
-  return createTask({
-    id: `expiration_${stableHash(identity)}`,
-    importType: 'expirations',
-    category,
-    categoryLabel: category === 'scadenza_rata' ? 'Scadenza rata' : 'Scadenza annuale',
+  const baseRecord = {
+    id: `expiration_record_${stableHash(identity)}`,
     clientName,
     phone: getCellText(worksheet, rowNumber, columns.phone),
-    source,
+    sourceCode: source.code,
+    sourceName: source.name,
+    sourceOwnerEmail: source.ownerEmail,
+    sourceOwnerName: source.ownerName,
     policyNumber,
     policyType: getCellText(worksheet, rowNumber, columns.policyType),
-    expirationType,
+    expirationType: 'A' as const,
     vehiclePlate: getCellText(worksheet, rowNumber, columns.vehiclePlate),
     eventDate: format(eventDate, DATE_FORMAT),
-    dueDate: format(dueDate, DATE_FORMAT),
-  });
+  };
+
+  return {
+    ...baseRecord,
+    sourceFingerprint: stableHash(JSON.stringify(baseRecord)),
+  };
+}
+
+function buildAnnualExpirationCampaignTasks(
+  record: ExpirationRecord,
+  campaigns: Campaign[],
+): ParsedImport['tasks'] {
+  return campaigns.filter(isAnnualExpirationCampaign).map(campaign => {
+    const daysBeforeExpiration = campaign.daysBeforeExpiration || 0;
+    if (daysBeforeExpiration < 1) return undefined;
+
+    const eventDate = parseISO(record.eventDate);
+    const dueDate = applyMinimumDate(
+      adjustWeekendToMonday(subDays(eventDate, daysBeforeExpiration)),
+      campaign.startDate
+    );
+    const identity = [
+      'annual-expiration-campaign',
+      campaign.id,
+      record.policyNumber,
+      record.eventDate,
+    ].join('|');
+
+    return createTask({
+      id: `expiration_campaign_${stableHash(identity)}`,
+      importType: 'expirations',
+      category: 'campagna',
+      categoryLabel: campaign.name,
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      clientName: record.clientName,
+      phone: record.phone,
+      source: {
+        code: record.sourceCode,
+        name: record.sourceName,
+        ownerEmail: record.sourceOwnerEmail,
+        ownerName: record.sourceOwnerName,
+      },
+      policyNumber: record.policyNumber,
+      policyType: record.policyType,
+      expirationType: record.expirationType,
+      vehiclePlate: record.vehiclePlate,
+      eventDate: record.eventDate,
+      dueDate: format(dueDate, DATE_FORMAT),
+    });
+  }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
 }
 
 export function getNextExpirationEvent(
@@ -622,6 +793,52 @@ function applyMinimumDate(date: Date, minimumDate?: string): Date {
   if (!minimumDate) return date;
   const parsedMinimumDate = parseISO(minimumDate);
   return date < parsedMinimumDate ? parsedMinimumDate : date;
+}
+
+export function getCampaignKind(campaign: Campaign): CampaignKind {
+  return campaign.campaignKind || 'newClients';
+}
+
+function isNewClientCampaign(campaign: Campaign): boolean {
+  return getCampaignKind(campaign) === 'newClients';
+}
+
+function isAnnualExpirationCampaign(campaign: Campaign): boolean {
+  return getCampaignKind(campaign) === 'annualExpirations';
+}
+
+function annualExpirationRecordFromTask(
+  id: string,
+  task: CallTask,
+): ExpirationRecord | undefined {
+  if (task.category !== 'scadenza_annuale' || task.expirationType !== 'A') {
+    return undefined;
+  }
+
+  const recordId = `expiration_record_${stableHash([
+    'annual-expiration-record',
+    task.policyNumber,
+    task.eventDate,
+  ].join('|'))}`;
+  const baseRecord = {
+    id: recordId || id,
+    clientName: task.clientName,
+    phone: task.phone,
+    sourceCode: task.sourceCode,
+    sourceName: task.sourceName,
+    sourceOwnerEmail: task.sourceOwnerEmail,
+    sourceOwnerName: task.sourceOwnerName,
+    policyNumber: task.policyNumber,
+    policyType: task.policyType,
+    expirationType: 'A' as const,
+    vehiclePlate: task.vehiclePlate,
+    eventDate: task.eventDate,
+  };
+
+  return {
+    ...baseRecord,
+    sourceFingerprint: stableHash(JSON.stringify(baseRecord)),
+  };
 }
 
 function buildWinbackTask(

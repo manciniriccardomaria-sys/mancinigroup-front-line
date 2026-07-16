@@ -22,26 +22,33 @@ import {
 import { db } from '../firebase';
 import {
   Campaign,
+  CampaignKind,
   ImportKind,
+  getCampaignKind,
   importCallTasks,
   parseClientWorkbook,
   syncCampaignTasks,
 } from '../callCenter';
-import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
 
 type CampaignDraft = {
   id?: string;
+  campaignKind: CampaignKind;
   name: string;
   description: string;
   monthsAfterStart: string;
+  daysBeforeExpiration: string;
+  startDate: string;
   active: boolean;
 };
 
 const EMPTY_CAMPAIGN: CampaignDraft = {
+  campaignKind: 'newClients',
   name: '',
   description: '',
   monthsAfterStart: '3',
+  daysBeforeExpiration: '45',
+  startDate: CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignDefaultStartDate,
   active: true,
 };
 
@@ -57,8 +64,8 @@ const IMPORT_CARDS: Array<{
   },
   {
     kind: 'expirations',
-    title: 'Scadenze annuali',
-    description: 'Campagna annuali dal 01/09/2026: richiamo 45 giorni prima della scadenza.',
+    title: 'Scadenze clienti',
+    description: 'Memorizza le scadenze annuali e genera le campagne attive a giorni prima della scadenza.',
   },
   {
     kind: 'winback',
@@ -67,11 +74,7 @@ const IMPORT_CARDS: Array<{
   },
 ];
 
-const VISIBLE_IMPORT_CARDS = IMPORT_CARDS.filter(card =>
-  card.kind !== 'expirations' ||
-  isCallCategoryEnabled('scadenza_rata') ||
-  isCallCategoryEnabled('scadenza_annuale')
-);
+const VISIBLE_IMPORT_CARDS = IMPORT_CARDS;
 
 export default function AdminImportPanel() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -97,23 +100,56 @@ export default function AdminImportPanel() {
     () => campaigns.filter(campaign => campaign.active),
     [campaigns]
   );
+  const activeNewClientCampaigns = useMemo(
+    () => activeCampaigns.filter(campaign => getCampaignKind(campaign) === 'newClients'),
+    [activeCampaigns]
+  );
 
   const saveCampaign = async (event: React.FormEvent) => {
     event.preventDefault();
     setCampaignError('');
     setCampaignMessage('');
 
+    const campaignKind = campaignDraft.campaignKind;
     const monthsAfterStart = Number(campaignDraft.monthsAfterStart);
-    if (!campaignDraft.name.trim() || !Number.isInteger(monthsAfterStart) || monthsAfterStart < 1) {
+    const daysBeforeExpiration = Number(campaignDraft.daysBeforeExpiration);
+    if (!campaignDraft.name.trim()) {
+      setCampaignError('Inserisci il nome della campagna.');
+      return;
+    }
+
+    if (
+      campaignKind === 'newClients' &&
+      (!Number.isInteger(monthsAfterStart) || monthsAfterStart < 1)
+    ) {
       setCampaignError('Inserisci un nome e un numero di mesi maggiore di zero.');
       return;
     }
 
+    if (
+      campaignKind === 'annualExpirations' &&
+      (!Number.isInteger(daysBeforeExpiration) || daysBeforeExpiration < 1)
+    ) {
+      setCampaignError('Inserisci un numero di giorni maggiore di zero.');
+      return;
+    }
+
+    if (
+      campaignKind === 'annualExpirations' &&
+      campaignDraft.startDate &&
+      !campaignDraft.startDate.match(/^\d{4}-\d{2}-\d{2}$/)
+    ) {
+      setCampaignError('Inserisci una data di inizio valida.');
+      return;
+    }
+
     const activeWithoutCurrent = campaigns.filter(
-      campaign => campaign.active && campaign.id !== campaignDraft.id
+      campaign => campaign.active &&
+        campaign.id !== campaignDraft.id &&
+        getCampaignKind(campaign) === 'newClients'
     ).length;
-    if (campaignDraft.active && activeWithoutCurrent >= 3) {
-      setCampaignError('Possono esserci al massimo tre campagne attive.');
+    if (campaignKind === 'newClients' && campaignDraft.active && activeWithoutCurrent >= 3) {
+      setCampaignError('Possono esserci al massimo tre campagne nuovi clienti attive.');
       return;
     }
 
@@ -122,7 +158,10 @@ export default function AdminImportPanel() {
       const payload = {
         name: campaignDraft.name.trim(),
         description: campaignDraft.description.trim(),
-        monthsAfterStart,
+        campaignKind,
+        monthsAfterStart: campaignKind === 'newClients' ? monthsAfterStart : 1,
+        daysBeforeExpiration: campaignKind === 'annualExpirations' ? daysBeforeExpiration : 0,
+        startDate: campaignKind === 'annualExpirations' ? campaignDraft.startDate : '',
         active: campaignDraft.active,
         updatedAt: serverTimestamp(),
       };
@@ -146,7 +185,9 @@ export default function AdminImportPanel() {
         campaignDraft.active
           ? result.totalRows > 0
             ? `Campagna salvata: ${result.created} chiamate create, ${result.updated} aggiornate e ${result.unchanged} già presenti.`
-            : 'Campagna salvata. Importa il file Nuovi clienti per generare le chiamate.'
+            : campaignKind === 'annualExpirations'
+              ? 'Campagna salvata. Importa il file Scadenze clienti per generare le chiamate.'
+              : 'Campagna salvata. Importa il file Nuovi clienti per generare le chiamate.'
           : 'Campagna salvata come disattivata.'
       );
       setCampaignDraft(EMPTY_CAMPAIGN);
@@ -159,11 +200,16 @@ export default function AdminImportPanel() {
   };
 
   const editCampaign = (campaign: Campaign) => {
+    const campaignKind = getCampaignKind(campaign);
     setCampaignDraft({
       id: campaign.id,
+      campaignKind,
       name: campaign.name,
       description: campaign.description,
-      monthsAfterStart: String(campaign.monthsAfterStart),
+      monthsAfterStart: String(campaign.monthsAfterStart || 3),
+      daysBeforeExpiration: String(campaign.daysBeforeExpiration || 45),
+      startDate: campaign.startDate ||
+        CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignDefaultStartDate,
       active: campaign.active,
     });
   };
@@ -188,6 +234,7 @@ export default function AdminImportPanel() {
         unchanged: 0,
         skippedRows: 0,
         storedClients: 0,
+        storedExpirations: 0,
       };
       const fileSummaries: string[] = [];
 
@@ -199,6 +246,7 @@ export default function AdminImportPanel() {
         totals.unchanged += result.unchanged;
         totals.skippedRows += result.skippedRows;
         totals.storedClients += result.storedClients;
+        totals.storedExpirations += result.storedExpirations;
         fileSummaries.push(`${file.name}: ${result.created} nuove, ${result.updated} aggiornate, ${result.unchanged} invariate`);
       }
 
@@ -210,6 +258,9 @@ export default function AdminImportPanel() {
           `${totals.unchanged} invariate`,
           ...(kind === 'newClients'
             ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
+            : []),
+          ...(kind === 'expirations'
+            ? [`${totals.storedExpirations} scadenze annuali memorizzate o aggiornate`]
             : []),
           `${totals.skippedRows} righe saltate`,
           ...(files.length > 1 ? [`File: ${fileSummaries.join(' · ')}`] : []),
@@ -234,9 +285,9 @@ export default function AdminImportPanel() {
         <div className="p-5 border-b border-slate-200 flex items-center gap-3">
           <CalendarPlus className="text-[#003781]" size={22} />
           <div>
-            <h3 className="font-bold text-slate-800">Campagne nuovi clienti</h3>
+            <h3 className="font-bold text-slate-800">Campagne chiamate</h3>
             <p className="text-sm text-slate-500">
-              Massimo tre campagne attive. Attualmente: {activeCampaigns.length}/3.
+              Nuovi clienti: massimo tre campagne attive. Attualmente: {activeNewClientCampaigns.length}/3.
             </p>
           </div>
         </div>
@@ -264,10 +315,19 @@ export default function AdminImportPanel() {
                     }`}>
                       {campaign.active ? 'Attiva' : 'Disattivata'}
                     </span>
+                    <span className="text-xs font-bold px-2 py-1 rounded bg-blue-50 text-[#003781]">
+                      {getCampaignKind(campaign) === 'annualExpirations'
+                        ? 'Scadenze annuali'
+                        : 'Nuovi clienti'}
+                    </span>
                   </div>
                   <p className="text-sm text-slate-500 mt-1">{campaign.description || 'Nessuna descrizione'}</p>
                   <p className="text-xs font-semibold text-[#003781] mt-2">
-                    Dopo {campaign.monthsAfterStart} mesi dall’ingresso
+                    {getCampaignKind(campaign) === 'annualExpirations'
+                      ? `${campaign.daysBeforeExpiration || 0} giorni prima della scadenza${
+                          campaign.startDate ? ` · dal ${formatDateForDisplay(campaign.startDate)}` : ''
+                        }`
+                      : `Dopo ${campaign.monthsAfterStart || 0} mesi dall’ingresso`}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -323,6 +383,21 @@ export default function AdminImportPanel() {
             </label>
 
             <label className="block">
+              <span className="text-xs font-bold text-slate-600">Tipo campagna</span>
+              <select
+                value={campaignDraft.campaignKind}
+                onChange={event => setCampaignDraft(previous => ({
+                  ...previous,
+                  campaignKind: event.target.value as CampaignKind,
+                }))}
+                className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781] bg-white"
+              >
+                <option value="newClients">Nuovi clienti</option>
+                <option value="annualExpirations">Scadenze annuali</option>
+              </select>
+            </label>
+
+            <label className="block">
               <span className="text-xs font-bold text-slate-600">Descrizione</span>
               <textarea
                 value={campaignDraft.description}
@@ -334,21 +409,55 @@ export default function AdminImportPanel() {
               />
             </label>
 
-            <label className="block">
-              <span className="text-xs font-bold text-slate-600">Mesi dall’ingresso</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={campaignDraft.monthsAfterStart}
-                onChange={event => setCampaignDraft(previous => ({
-                  ...previous,
-                  monthsAfterStart: event.target.value,
-                }))}
-                className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                required
-              />
-            </label>
+            {campaignDraft.campaignKind === 'newClients' ? (
+              <label className="block">
+                <span className="text-xs font-bold text-slate-600">Mesi dall’ingresso</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={campaignDraft.monthsAfterStart}
+                  onChange={event => setCampaignDraft(previous => ({
+                    ...previous,
+                    monthsAfterStart: event.target.value,
+                  }))}
+                  className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                  required
+                />
+              </label>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-bold text-slate-600">Giorni prima della scadenza</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    step="1"
+                    value={campaignDraft.daysBeforeExpiration}
+                    onChange={event => setCampaignDraft(previous => ({
+                      ...previous,
+                      daysBeforeExpiration: event.target.value,
+                    }))}
+                    className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                    required
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-bold text-slate-600">Data inizio</span>
+                  <input
+                    type="date"
+                    value={campaignDraft.startDate}
+                    onChange={event => setCampaignDraft(previous => ({
+                      ...previous,
+                      startDate: event.target.value,
+                    }))}
+                    className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                  />
+                </label>
+              </div>
+            )}
 
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -477,4 +586,10 @@ export default function AdminImportPanel() {
       </section>
     </div>
   );
+}
+
+function formatDateForDisplay(value: string): string {
+  if (!value || !value.match(/^\d{4}-\d{2}-\d{2}$/)) return value;
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
 }

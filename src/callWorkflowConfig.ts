@@ -20,10 +20,10 @@ export const CALL_WORKFLOW_CONFIG = {
   statusesAreEditable: true,
   showOverdueCalls: true,
   features: {
-    // Le scadenze rata restano disattivate; le annuali sono usate per la campagna da settembre.
+    // Le scadenze dirette restano disattivate: si usano campagne configurabili dagli agenti.
     expirationCalls: {
       scadenzaRataEnabled: false,
-      scadenzaAnnualeEnabled: true,
+      scadenzaAnnualeEnabled: false,
     },
   },
   sourceOwnership: {
