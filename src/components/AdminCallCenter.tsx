@@ -597,6 +597,12 @@ export default function AdminCallCenter() {
                           .filter(Boolean)
                           .join(' · ') || '—'}
                       </p>
+                      {task.fiscalCode && (
+                        <p><strong>Codice fiscale:</strong> {task.fiscalCode}</p>
+                      )}
+                      {task.autoPremium && (
+                        <p><strong>Premio auto:</strong> {formatPremium(task.autoPremium)}</p>
+                      )}
                       {task.category === 'winback' && task.exitDate && (
                         <p><strong>Uscita:</strong> {formatDate(task.exitDate)}</p>
                       )}

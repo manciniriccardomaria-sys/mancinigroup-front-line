@@ -65,7 +65,7 @@ const IMPORT_CARDS: Array<{
   {
     kind: 'expirations',
     title: 'Scadenze clienti',
-    description: 'Memorizza le scadenze annuali e genera le campagne attive a giorni prima della scadenza.',
+    description: 'Memorizza le scadenze clienti e genera le campagne attive a X giorni dalla prossima scadenza.',
   },
   {
     kind: 'winback',
@@ -260,7 +260,7 @@ export default function AdminImportPanel() {
             ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
             : []),
           ...(kind === 'expirations'
-            ? [`${totals.storedExpirations} scadenze annuali memorizzate o aggiornate`]
+            ? [`${totals.storedExpirations} scadenze clienti memorizzate o aggiornate`]
             : []),
           `${totals.skippedRows} righe saltate`,
           ...(files.length > 1 ? [`File: ${fileSummaries.join(' · ')}`] : []),
@@ -317,7 +317,7 @@ export default function AdminImportPanel() {
                     </span>
                     <span className="text-xs font-bold px-2 py-1 rounded bg-blue-50 text-[#003781]">
                       {getCampaignKind(campaign) === 'annualExpirations'
-                        ? 'Scadenze annuali'
+                        ? 'Scadenze clienti'
                         : 'Nuovi clienti'}
                     </span>
                   </div>
@@ -384,17 +384,28 @@ export default function AdminImportPanel() {
 
             <label className="block">
               <span className="text-xs font-bold text-slate-600">Tipo campagna</span>
-              <select
-                value={campaignDraft.campaignKind}
-                onChange={event => setCampaignDraft(previous => ({
-                  ...previous,
-                  campaignKind: event.target.value as CampaignKind,
-                }))}
-                className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781] bg-white"
-              >
-                <option value="newClients">Nuovi clienti</option>
-                <option value="annualExpirations">Scadenze annuali</option>
-              </select>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                {([
+                  ['newClients', 'Nuovi clienti'],
+                  ['annualExpirations', 'Scadenze clienti'],
+                ] as Array<[CampaignKind, string]>).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => setCampaignDraft(previous => ({
+                      ...previous,
+                      campaignKind: kind,
+                    }))}
+                    className={`rounded-lg border px-3 py-2 text-sm font-bold transition-colors ${
+                      campaignDraft.campaignKind === kind
+                        ? 'border-[#003781] bg-blue-50 text-[#003781]'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </label>
 
             <label className="block">
@@ -427,6 +438,9 @@ export default function AdminImportPanel() {
               </label>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003781]">
+                  Questa campagna crea chiamate a X giorni dalla data in colonna AH del file Scadenze clienti.
+                </div>
                 <label className="block">
                   <span className="text-xs font-bold text-slate-600">Giorni prima della scadenza</span>
                   <input

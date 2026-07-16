@@ -586,8 +586,12 @@ export default function EmployeeCallCalendar() {
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                           <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
                           {task.policyNumber && <span><strong>Polizza:</strong> {task.policyNumber}</span>}
+                          {task.fiscalCode && <span><strong>Codice fiscale:</strong> {task.fiscalCode}</span>}
                           {task.policyType && <span><strong>Ramo:</strong> {task.policyType}</span>}
                           {task.vehiclePlate && <span><strong>Targa:</strong> {task.vehiclePlate}</span>}
+                          {task.autoPremium && (
+                            <span><strong>Premio auto:</strong> {formatPremium(task.autoPremium)}</span>
+                          )}
                           {task.coverages && <span><strong>Coperture:</strong> {task.coverages}</span>}
                           {task.category === 'scadenza_rata' && task.eventDate && (
                             <span>

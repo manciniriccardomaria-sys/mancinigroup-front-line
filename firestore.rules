@@ -323,8 +323,10 @@ service cloud.firestore {
         'sourceOwnerName',
         'policyNumber',
         'policyType',
+        'fiscalCode',
         'expirationType',
         'vehiclePlate',
+        'autoPremium',
         'eventDate',
         'sourceFingerprint'
       ]) &&
@@ -338,8 +340,10 @@ service cloud.firestore {
         data.sourceOwnerName is string && data.sourceOwnerName.size() < 100 &&
         data.policyNumber is string && data.policyNumber.size() < 100 &&
         data.policyType is string && data.policyType.size() < 200 &&
-        data.expirationType == 'A' &&
+        data.fiscalCode is string && data.fiscalCode.size() < 100 &&
+        data.expirationType is string && data.expirationType.size() < 20 &&
         data.vehiclePlate is string && data.vehiclePlate.size() < 100 &&
+        data.autoPremium is string && data.autoPremium.size() < 100 &&
         data.eventDate is string &&
         data.eventDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.sourceFingerprint is string &&

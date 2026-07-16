@@ -64,8 +64,10 @@ export type CallTask = {
   sourceOwnerName: string;
   policyNumber: string;
   policyType: string;
+  fiscalCode: string;
   expirationType: string;
   vehiclePlate: string;
+  autoPremium: string;
   coverages: string;
   birthDate: string;
   relationshipStartDate: string;
@@ -113,8 +115,10 @@ export type ExpirationRecord = {
   sourceOwnerName: string;
   policyNumber: string;
   policyType: string;
-  expirationType: 'A';
+  fiscalCode: string;
+  expirationType: string;
   vehiclePlate: string;
+  autoPremium: string;
   eventDate: string;
   sourceFingerprint: string;
   importedAt?: unknown;
@@ -361,7 +365,7 @@ export async function syncCampaignTasks(
 
     return importCallTasks({
       kind: 'expirations',
-      fileName: 'Scadenze annuali memorizzate',
+      fileName: 'Scadenze clienti memorizzate',
       sheetName: CLIENT_IMPORT_CONFIG.expirations.sheetName,
       rowCount: expirationRecords.length,
       skippedRows: 0,
@@ -684,29 +688,19 @@ function buildAnnualExpirationRecord(
   const columns = config.columns;
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
   const policyNumber = getCellText(worksheet, rowNumber, columns.policyNumber);
+  const fiscalCode = getCellText(worksheet, rowNumber, columns.fiscalCode);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
-  const expirationType = getCellText(
-    worksheet,
-    rowNumber,
-    columns.expirationType,
-  ).toUpperCase() as 'R' | 'A';
-  const baseDate = getCellDate(worksheet, rowNumber, columns.baseDate);
-  const expirationRule = config.scheduleRule.expirationTypes[expirationType];
+  const expirationType = getCellText(worksheet, rowNumber, columns.expirationType).toUpperCase();
+  const eventDate = getCellDate(worksheet, rowNumber, columns.nextExpirationDate);
 
-  if (!clientName || !policyNumber || !source.code || !baseDate || !expirationRule) {
+  if (!clientName || !policyNumber || !source.code || !eventDate) {
     return undefined;
   }
 
-  if (expirationType !== 'A') return undefined;
-
-  const eventDate = getNextExpirationEvent(
-    baseDate,
-    expirationRule.monthsToAdd,
-    parseISO(getItalyDate()),
-  );
   const identity = [
-    'annual-expiration-record',
+    'client-expiration-record',
     policyNumber,
+    fiscalCode,
     format(eventDate, DATE_FORMAT),
   ].join('|');
   const baseRecord = {
@@ -719,8 +713,10 @@ function buildAnnualExpirationRecord(
     sourceOwnerName: source.ownerName,
     policyNumber,
     policyType: getCellText(worksheet, rowNumber, columns.policyType),
-    expirationType: 'A' as const,
+    fiscalCode,
+    expirationType,
     vehiclePlate: getCellText(worksheet, rowNumber, columns.vehiclePlate),
+    autoPremium: getCellText(worksheet, rowNumber, columns.autoPremium),
     eventDate: format(eventDate, DATE_FORMAT),
   };
 
@@ -767,8 +763,10 @@ function buildAnnualExpirationCampaignTasks(
       },
       policyNumber: record.policyNumber,
       policyType: record.policyType,
+      fiscalCode: record.fiscalCode,
       expirationType: record.expirationType,
       vehiclePlate: record.vehiclePlate,
+      autoPremium: record.autoPremium,
       eventDate: record.eventDate,
       dueDate: format(dueDate, DATE_FORMAT),
     });
@@ -811,13 +809,14 @@ function annualExpirationRecordFromTask(
   id: string,
   task: CallTask,
 ): ExpirationRecord | undefined {
-  if (task.category !== 'scadenza_annuale' || task.expirationType !== 'A') {
+  if (task.category !== 'scadenza_annuale') {
     return undefined;
   }
 
   const recordId = `expiration_record_${stableHash([
-    'annual-expiration-record',
+    'client-expiration-record',
     task.policyNumber,
+    task.fiscalCode,
     task.eventDate,
   ].join('|'))}`;
   const baseRecord = {
@@ -830,8 +829,10 @@ function annualExpirationRecordFromTask(
     sourceOwnerName: task.sourceOwnerName,
     policyNumber: task.policyNumber,
     policyType: task.policyType,
-    expirationType: 'A' as const,
+    fiscalCode: task.fiscalCode,
+    expirationType: task.expirationType,
     vehiclePlate: task.vehiclePlate,
+    autoPremium: task.autoPremium,
     eventDate: task.eventDate,
   };
 
@@ -904,8 +905,10 @@ function createTask(
     campaignName: '',
     policyNumber: '',
     policyType: '',
+    fiscalCode: '',
     expirationType: '',
     vehiclePlate: '',
+    autoPremium: '',
     coverages: '',
     birthDate: '',
     relationshipStartDate: '',
