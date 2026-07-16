@@ -116,13 +116,20 @@ export default function AdminDashboard() {
   }, [categories]);
 
   useEffect(() => {
+    const loadingTimeout = window.setTimeout(() => {
+      setError('Firestore non sta rispondendo. Riprova tra poco o verifica la configurazione Firebase.');
+      setLoading(false);
+    }, 12000);
+
     const q = query(collection(db, 'daily_reports'), orderBy('date', 'desc'));
     const unsubscribeReports = onSnapshot(q, (snapshot) => {
+      window.clearTimeout(loadingTimeout);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyReport));
       setReports(data);
       setError('');
       setLoading(false);
     }, (reportsError) => {
+      window.clearTimeout(loadingTimeout);
       console.error('Error loading reports:', reportsError);
       setError(getAdminErrorMessage(reportsError));
       setLoading(false);
@@ -164,6 +171,7 @@ export default function AdminDashboard() {
     });
 
     return () => {
+      window.clearTimeout(loadingTimeout);
       unsubscribeReports();
       unsubscribeUsers();
     };

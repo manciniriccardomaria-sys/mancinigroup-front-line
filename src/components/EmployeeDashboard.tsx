@@ -82,11 +82,11 @@ export default function EmployeeDashboard() {
       try {
         // Creating the document first avoids a denied read when today's report
         // does not exist yet under owner-only Firestore rules.
-        await setDoc(reportRef, {
+        await withTimeout(setDoc(reportRef, {
           userId: initialReport.userId,
           userName: initialReport.userName,
           date: initialReport.date,
-        }, { merge: true });
+        }, { merge: true }), 12000);
 
         if (cancelled) return;
 
@@ -501,6 +501,15 @@ function createInitialReport(userId: string, userName: string, date: string): Da
     date,
     values: {},
   };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('firestore-timeout')), timeoutMs);
+    }),
+  ]);
 }
 
 function getReportErrorMessage(error: unknown) {

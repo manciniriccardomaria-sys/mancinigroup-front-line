@@ -121,20 +121,37 @@ export function groupReportCategories(
 }
 
 export function useReportCategories() {
-  const [categories, setCategories] = useState<ReportCategory[]>([]);
+  const [categories, setCategories] = useState<ReportCategory[]>(DEFAULT_REPORT_CATEGORIES);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => onSnapshot(collection(db, 'report_categories'), snapshot => {
-    setCategories(
-      snapshot.docs
+  useEffect(() => {
+    const loadingTimeout = window.setTimeout(() => {
+      setCategories(DEFAULT_REPORT_CATEGORIES);
+      setLoading(false);
+    }, 12000);
+
+    const unsubscribe = onSnapshot(collection(db, 'report_categories'), snapshot => {
+      window.clearTimeout(loadingTimeout);
+      const storedCategories = snapshot.docs
         .map(item => ({ id: item.id, ...item.data() } as ReportCategory))
         .sort((first, second) =>
           first.order - second.order ||
           first.label.localeCompare(second.label, 'it')
-        )
-    );
-    setLoading(false);
-  }), []);
+        );
+      setCategories(storedCategories.length > 0 ? storedCategories : DEFAULT_REPORT_CATEGORIES);
+      setLoading(false);
+    }, error => {
+      window.clearTimeout(loadingTimeout);
+      console.error('Error loading report categories:', error);
+      setCategories(DEFAULT_REPORT_CATEGORIES);
+      setLoading(false);
+    });
+
+    return () => {
+      window.clearTimeout(loadingTimeout);
+      unsubscribe();
+    };
+  }, []);
 
   const sections = useMemo(
     () => groupReportCategories(categories),
