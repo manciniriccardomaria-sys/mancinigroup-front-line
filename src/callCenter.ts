@@ -615,7 +615,7 @@ function buildNewClientRecord(
   const baseClient = {
     id: `new_client_${stableHash(identity)}`,
     clientName,
-    phone: getCellText(worksheet, rowNumber, columns.phone),
+    phone: getCellPhone(worksheet, rowNumber, columns.phone),
     sourceCode: source.code,
     sourceName: source.name,
     sourceOwnerEmail: source.ownerEmail,
@@ -712,7 +712,7 @@ function buildAnnualExpirationRecord(
   const baseRecord = {
     id: `expiration_record_${stableHash(identity)}`,
     clientName,
-    phone: getCellText(worksheet, rowNumber, columns.phone),
+    phone: getCellPhone(worksheet, rowNumber, columns.phone),
     sourceCode: source.code,
     sourceName: source.name,
     sourceOwnerEmail: source.ownerEmail,
@@ -823,7 +823,7 @@ function annualExpirationRecordFromTask(
   const baseRecord = {
     id: recordId || id,
     clientName: task.clientName,
-    phone: task.phone,
+    phone: normalizePhone(task.phone),
     sourceCode: task.sourceCode,
     sourceName: task.sourceName,
     sourceOwnerEmail: task.sourceOwnerEmail,
@@ -870,7 +870,7 @@ function buildWinbackTask(
     category: 'winback',
     categoryLabel: 'Winback',
     clientName,
-    phone: getCellText(worksheet, rowNumber, columns.phone),
+    phone: getCellPhone(worksheet, rowNumber, columns.phone),
     source,
     policyNumber,
     vehiclePlate: getCellText(worksheet, rowNumber, columns.vehiclePlate),
@@ -930,6 +930,23 @@ function getCellText(
   column: string,
 ): string {
   return worksheet.getCell(rowNumber, columnToNumber(column)).text.trim();
+}
+
+function getCellPhone(
+  worksheet: WorksheetLike,
+  rowNumber: number,
+  column: string,
+): string {
+  return normalizePhone(getCellText(worksheet, rowNumber, column));
+}
+
+function normalizePhone(value: string): string {
+  const normalized = normalizeText(value);
+  if (!normalized || ['SI', 'SÌ', 'NO', 'TRUE', 'FALSE'].includes(normalized)) {
+    return '';
+  }
+
+  return /\d/.test(value) ? value.trim() : '';
 }
 
 function getCellDate(
