@@ -42,18 +42,19 @@ export default function App() {
 
         setAccessError('');
 
+        const desiredProfile: UserProfile = {
+          uid: currentUser.uid,
+          name: authorizedUser.name,
+          email: currentUser.email || '',
+          role: authorizedUser.role,
+        };
+
         try {
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await withTimeout(getDoc(docRef), 12000);
           const storedProfile = docSnap.exists()
             ? docSnap.data() as UserProfile
             : undefined;
-          const desiredProfile: UserProfile = {
-            uid: currentUser.uid,
-            name: authorizedUser.name,
-            email: currentUser.email || '',
-            role: authorizedUser.role,
-          };
 
           if (storedProfile) {
             const updatedProfile = {
@@ -76,8 +77,13 @@ export default function App() {
           }
         } catch (err) {
           console.error("Error fetching user profile:", err);
-          setProfile(null);
-          setProfileError(getProfileErrorMessage(err));
+          if (canUseLocalAuthorizedProfile(err)) {
+            setProfile(desiredProfile);
+            setProfileError('');
+          } else {
+            setProfile(null);
+            setProfileError(getProfileErrorMessage(err));
+          }
         }
       } else {
         setUser(null);
@@ -181,17 +187,43 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 function getProfileErrorMessage(error: unknown) {
-  const code = typeof error === 'object' && error && 'code' in error
-    ? String(error.code)
-    : '';
+  const code = getFirestoreErrorCode(error);
 
   if (code.includes('permission-denied')) {
     return 'Firebase ha rifiutato l\'accesso. Pubblica le regole Firestore aggiornate e riprova.';
+  }
+
+  if (code.includes('resource-exhausted')) {
+    return 'Firestore ha esaurito la quota giornaliera di letture. Riprova quando la quota si resetta o passa il progetto a un piano con più capacità.';
+  }
+
+  if (code.includes('unavailable') || code.includes('deadline-exceeded')) {
+    return 'Firestore non è temporaneamente raggiungibile. Riprova tra poco.';
   }
 
   if (error instanceof Error && error.message === 'firestore-timeout') {
     return 'La connessione a Firestore sta impiegando troppo tempo. Controlla la configurazione Firebase e la rete.';
   }
 
-  return 'Non e stato possibile caricare il profilo. Controlla Firestore e riprova.';
+  return 'Non è stato possibile caricare il profilo. Controlla Firestore e riprova.';
+}
+
+function canUseLocalAuthorizedProfile(error: unknown) {
+  const code = getFirestoreErrorCode(error);
+  return code.includes('resource-exhausted') ||
+    code.includes('unavailable') ||
+    code.includes('deadline-exceeded') ||
+    (error instanceof Error && error.message === 'firestore-timeout');
+}
+
+function getFirestoreErrorCode(error: unknown) {
+  if (typeof error === 'object' && error && 'code' in error) {
+    return String(error.code);
+  }
+
+  if (error instanceof Error) {
+    return error.message.toLowerCase();
+  }
+
+  return '';
 }
