@@ -568,11 +568,13 @@ async function loadStoredAnnualExpirationRecords(): Promise<ExpirationRecord[]> 
 
 function getTaskLogicalKey(task: Partial<CallTask>): string {
   if (task.importType === 'expirations') {
+    const expirationIdentity = getExpirationTaskIdentity(task);
+
     if (task.category === 'campagna') {
       return [
         task.importType,
         task.campaignId,
-        task.policyNumber,
+        expirationIdentity,
         task.expirationType,
         task.eventDate,
       ].join('|');
@@ -580,7 +582,7 @@ function getTaskLogicalKey(task: Partial<CallTask>): string {
 
     return [
       task.importType,
-      task.policyNumber,
+      expirationIdentity,
       task.expirationType,
       task.eventDate,
     ].join('|');
@@ -748,26 +750,61 @@ function buildCampaignTasksForClient(
   }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
 }
 
+function getExpirationColumns(
+  worksheet: WorksheetLike,
+): Record<keyof typeof CLIENT_IMPORT_CONFIG.expirations.columns, string> {
+  const defaultColumns = CLIENT_IMPORT_CONFIG.expirations.columns;
+  const headerFullName = normalizeText(getCellText(worksheet, 1, 'A'));
+  const headerSource = normalizeText(getCellText(worksheet, 1, 'G'));
+  const headerNextExpiration = normalizeText(getCellText(worksheet, 1, 'AH'));
+
+  if (
+    headerFullName.includes('CONTRAENTE') &&
+    headerSource.includes('FONTE') &&
+    headerNextExpiration.includes('PROX SCAD')
+  ) {
+    return {
+      ...defaultColumns,
+      fullName: 'A',
+      policyNumber: '',
+      source: 'G',
+      policyType: '',
+      fiscalCode: 'N',
+      expirationType: '',
+      nextExpirationDate: 'AH',
+      vehiclePlate: '',
+      phone: 'Z',
+      autoPremium: 'CP',
+    };
+  }
+
+  return defaultColumns;
+}
+
 function buildAnnualExpirationRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
 ): ExpirationRecord | undefined {
-  const config = CLIENT_IMPORT_CONFIG.expirations;
-  const columns = config.columns;
+  const columns = getExpirationColumns(worksheet);
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
-  const policyNumber = getCellText(worksheet, rowNumber, columns.policyNumber);
-  const fiscalCode = getCellText(worksheet, rowNumber, columns.fiscalCode);
+  const policyNumber = getOptionalCellText(worksheet, rowNumber, columns.policyNumber);
+  const fiscalCode = getOptionalCellText(worksheet, rowNumber, columns.fiscalCode);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
-  const expirationType = getCellText(worksheet, rowNumber, columns.expirationType).toUpperCase();
+  const expirationType = getOptionalCellText(
+    worksheet,
+    rowNumber,
+    columns.expirationType,
+  ).toUpperCase() || 'A';
   const eventDate = getCellDate(worksheet, rowNumber, columns.nextExpirationDate);
 
-  if (!clientName || !policyNumber || !source.code || !eventDate) {
+  if (!clientName || !source.code || !eventDate || (!policyNumber && !fiscalCode)) {
     return undefined;
   }
 
+  const expirationIdentity = policyNumber || fiscalCode || `${clientName}|${source.code}`;
   const identity = [
     'client-expiration-record',
-    policyNumber,
+    expirationIdentity,
     fiscalCode,
     format(eventDate, DATE_FORMAT),
   ].join('|');
@@ -780,11 +817,11 @@ function buildAnnualExpirationRecord(
     sourceOwnerEmail: source.ownerEmail,
     sourceOwnerName: source.ownerName,
     policyNumber,
-    policyType: getCellText(worksheet, rowNumber, columns.policyType),
+    policyType: getOptionalCellText(worksheet, rowNumber, columns.policyType),
     fiscalCode,
     expirationType,
-    vehiclePlate: getCellText(worksheet, rowNumber, columns.vehiclePlate),
-    autoPremium: getCellText(worksheet, rowNumber, columns.autoPremium),
+    vehiclePlate: getOptionalCellText(worksheet, rowNumber, columns.vehiclePlate),
+    autoPremium: getOptionalCellText(worksheet, rowNumber, columns.autoPremium),
     eventDate: format(eventDate, DATE_FORMAT),
   };
 
@@ -813,7 +850,7 @@ function buildAnnualExpirationCampaignTasks(
     const identity = [
       'annual-expiration-campaign',
       campaign.id,
-      record.policyNumber,
+      getExpirationRecordIdentity(record),
       record.eventDate,
     ].join('|');
 
@@ -842,6 +879,21 @@ function buildAnnualExpirationCampaignTasks(
       dueDate: format(dueDate, DATE_FORMAT),
     });
   }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
+}
+
+function getExpirationRecordIdentity(record: Pick<
+  ExpirationRecord,
+  'policyNumber' | 'fiscalCode' | 'clientName' | 'sourceCode'
+>): string {
+  return record.policyNumber ||
+    record.fiscalCode ||
+    `${record.clientName}|${record.sourceCode}`;
+}
+
+function getExpirationTaskIdentity(task: Partial<CallTask>): string {
+  return task.policyNumber ||
+    task.fiscalCode ||
+    `${task.clientName || ''}|${task.sourceCode || ''}`;
 }
 
 export function getNextExpirationEvent(
@@ -880,7 +932,7 @@ function annualExpirationRecordFromTask(
 
   const recordId = `expiration_record_${stableHash([
     'client-expiration-record',
-    task.policyNumber,
+    getExpirationTaskIdentity(task),
     task.fiscalCode,
     task.eventDate,
   ].join('|'))}`;
@@ -998,6 +1050,14 @@ function getCellText(
   column: string,
 ): string {
   return worksheet.getCell(rowNumber, columnToNumber(column)).text.trim();
+}
+
+function getOptionalCellText(
+  worksheet: WorksheetLike,
+  rowNumber: number,
+  column: string,
+): string {
+  return column ? getCellText(worksheet, rowNumber, column) : '';
 }
 
 function getCellPhone(
