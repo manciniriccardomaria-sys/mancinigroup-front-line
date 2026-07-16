@@ -274,6 +274,13 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       },
     ])
   );
+  const shouldPruneOpenTasks = parsed.kind === 'expirations';
+  const nextTaskIds = shouldPruneOpenTasks
+    ? new Set(parsed.tasks.map(task => task.id))
+    : undefined;
+  const nextTaskLogicalKeys = shouldPruneOpenTasks
+    ? new Set(parsed.tasks.map(task => getTaskLogicalKey(task)))
+    : undefined;
 
   let created = 0;
   let updated = 0;
@@ -287,6 +294,19 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     batch = writeBatch(db);
     batchSize = 0;
   };
+
+  if (shouldPruneOpenTasks && nextTaskIds && nextTaskLogicalKeys) {
+    for (const item of existingSnapshot.docs) {
+      const task = item.data() as Partial<CallTask>;
+      const isStillGenerated = nextTaskIds.has(item.id) ||
+        nextTaskLogicalKeys.has(getTaskLogicalKey(task));
+      if (isStillGenerated || task.status !== 'da_chiamare') continue;
+
+      batch.delete(doc(db, 'call_tasks', item.id));
+      batchSize += 1;
+      if (batchSize >= 400) await commitBatch();
+    }
+  }
 
   for (const task of parsed.tasks) {
     const existingTask = existingById.get(task.id) ||
@@ -479,6 +499,7 @@ async function importExpirationRecords(
   expirations: ExpirationRecord[],
 ): Promise<number> {
   const existingSnapshot = await getDocs(collection(db, 'expiration_records'));
+  const nextIds = new Set(expirations.map(expiration => expiration.id));
   const existingById = new Map(
     existingSnapshot.docs.map(item => [
       item.id,
@@ -496,6 +517,14 @@ async function importExpirationRecords(
     batch = writeBatch(db);
     batchSize = 0;
   };
+
+  for (const item of existingSnapshot.docs) {
+    if (nextIds.has(item.id)) continue;
+
+    batch.delete(doc(db, 'expiration_records', item.id));
+    batchSize += 1;
+    if (batchSize >= 400) await commitBatch();
+  }
 
   for (const expiration of expirations) {
     const previousFingerprint = existingById.get(expiration.id);
