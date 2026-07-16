@@ -57,7 +57,7 @@ export const CLIENT_IMPORT_CONFIG = {
       lastGrossPremium: 'I',
       exitDate: 'N',
       vehiclePlate: 'R',
-      phone: 'AW',
+      phone: 'AR',
     },
     identityFields: ['policyNumber'],
     scheduleRule: {
