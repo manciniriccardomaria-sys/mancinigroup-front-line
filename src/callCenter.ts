@@ -804,8 +804,11 @@ function buildAnnualExpirationCampaignTasks(
 
     const eventDate = parseISO(record.eventDate);
     const dueDate = adjustWeekendToMonday(subDays(eventDate, daysBeforeExpiration));
-    if (campaign.startDate && dueDate < parseISO(campaign.startDate)) {
-      return undefined;
+    if (campaign.startDate) {
+      const campaignStartDate = parseISO(campaign.startDate);
+      if (eventDate < campaignStartDate || dueDate < campaignStartDate) {
+        return undefined;
+      }
     }
     const identity = [
       'annual-expiration-campaign',
