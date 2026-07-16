@@ -24,7 +24,7 @@ import {
   AUTHORIZED_EMPLOYEES,
 } from './constants';
 import { CLIENT_IMPORT_CONFIG } from './clientImportConfig';
-import { CallStatusId } from './callWorkflowConfig';
+import { CallStatusId, isCallCategoryEnabled } from './callWorkflowConfig';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 
 export type ImportKind = 'newClients' | 'expirations' | 'winback';
@@ -426,12 +426,24 @@ export function isTaskBeforeTrackingStart(task: CallTask): boolean {
     getTaskEffectiveDate(task) < CALL_TRACKING_START_DATE;
 }
 
+export function isTaskCampaignWindowOpen(
+  task: CallTask,
+  referenceDate = getItalyDate(),
+): boolean {
+  if (task.category === 'scadenza_annuale') {
+    return referenceDate >= CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignStartDate;
+  }
+
+  return true;
+}
+
 export function isTaskActionable(
   task: CallTask,
   referenceDate = getItalyDate(),
 ): boolean {
   const effectiveDate = getTaskEffectiveDate(task);
   return !isTaskClosed(task.status) &&
+    isTaskCampaignWindowOpen(task, referenceDate) &&
     !isTaskBeforeTrackingStart(task) &&
     effectiveDate <= referenceDate &&
     task.eventDate >= referenceDate;
@@ -551,13 +563,22 @@ function buildExpirationTask(
     return undefined;
   }
 
+  const category: CallCategory = expirationType === 'R'
+    ? 'scadenza_rata'
+    : 'scadenza_annuale';
+  if (!isCallCategoryEnabled(category)) return undefined;
+
   const eventDate = getNextExpirationEvent(
     baseDate,
     expirationRule.monthsToAdd,
     parseISO(getItalyDate()),
   );
-  const dueDate = adjustWeekendToMonday(
-    subDays(eventDate, config.scheduleRule.reminderDays)
+  const reminderDays = expirationRule.reminderDays ?? config.scheduleRule.reminderDays;
+  const dueDate = applyMinimumDate(
+    adjustWeekendToMonday(subDays(eventDate, reminderDays)),
+    category === 'scadenza_annuale'
+      ? config.scheduleRule.annualCampaignStartDate
+      : undefined
   );
   const identity = [
     'expiration',
@@ -569,8 +590,8 @@ function buildExpirationTask(
   return createTask({
     id: `expiration_${stableHash(identity)}`,
     importType: 'expirations',
-    category: expirationType === 'R' ? 'scadenza_rata' : 'scadenza_annuale',
-    categoryLabel: expirationType === 'R' ? 'Scadenza rata' : 'Scadenza annuale',
+    category,
+    categoryLabel: category === 'scadenza_rata' ? 'Scadenza rata' : 'Scadenza annuale',
     clientName,
     phone: getCellText(worksheet, rowNumber, columns.phone),
     source,
@@ -595,6 +616,12 @@ export function getNextExpirationEvent(
   }
 
   return eventDate;
+}
+
+function applyMinimumDate(date: Date, minimumDate?: string): Date {
+  if (!minimumDate) return date;
+  const parsedMinimumDate = parseISO(minimumDate);
+  return date < parsedMinimumDate ? parsedMinimumDate : date;
 }
 
 function buildWinbackTask(

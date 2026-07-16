@@ -20,8 +20,11 @@ export const CALL_WORKFLOW_CONFIG = {
   statusesAreEditable: true,
   showOverdueCalls: true,
   features: {
-    // Riporta a true per riattivare scadenze rata e annuali in tutta l'app.
-    expirationCallsEnabled: false,
+    // Le scadenze rata restano disattivate; le annuali sono usate per la campagna da settembre.
+    expirationCalls: {
+      scadenzaRataEnabled: false,
+      scadenzaAnnualeEnabled: true,
+    },
   },
   sourceOwnership: {
     sourceRepresentsPortfolioOwner: true,
@@ -37,11 +40,12 @@ export const CALL_WORKFLOW_CONFIG = {
 } as const;
 
 export function isCallCategoryEnabled(category: string): boolean {
-  if (
-    category === 'scadenza_rata' ||
-    category === 'scadenza_annuale'
-  ) {
-    return CALL_WORKFLOW_CONFIG.features.expirationCallsEnabled;
+  if (category === 'scadenza_rata') {
+    return CALL_WORKFLOW_CONFIG.features.expirationCalls.scadenzaRataEnabled;
+  }
+
+  if (category === 'scadenza_annuale') {
+    return CALL_WORKFLOW_CONFIG.features.expirationCalls.scadenzaAnnualeEnabled;
   }
 
   return true;

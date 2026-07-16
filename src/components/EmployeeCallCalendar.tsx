@@ -40,6 +40,7 @@ import {
   getTaskEffectiveDate,
   isTaskActionable,
   isTaskBeforeTrackingStart,
+  isTaskCampaignWindowOpen,
   isTaskClosed,
   isTaskExpired,
 } from '../callCenter';
@@ -703,6 +704,8 @@ export default function EmployeeCallCalendar() {
 }
 
 function getEmployeeCalendarDate(task: CallTask, today: string): string | undefined {
+  if (!isTaskCampaignWindowOpen(task, today)) return undefined;
+
   if (task.status === 'chiamato') {
     return task.calledDate || getTaskEffectiveDate(task);
   }

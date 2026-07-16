@@ -20,6 +20,7 @@ import {
   getTaskEffectiveDate,
   isTaskActionable,
   isTaskBeforeTrackingStart,
+  isTaskCampaignWindowOpen,
   isTaskClosed,
   isTaskExpired,
 } from '../callCenter';
@@ -164,11 +165,13 @@ export default function AdminCallCenter() {
         const matchesOperationalView = {
           today: isTaskActionable(task, today),
           next7: !isTaskClosed(task.status) &&
+            isTaskCampaignWindowOpen(task, today) &&
             !isTaskExpired(task, today) &&
             !isTaskBeforeTrackingStart(task) &&
             effectiveDate > today &&
             effectiveDate <= nextSevenDays,
           active: !isTaskClosed(task.status) &&
+            isTaskCampaignWindowOpen(task, today) &&
             !isTaskExpired(task, today) &&
             !isTaskBeforeTrackingStart(task),
           worked: isTaskWorked(task) &&
@@ -228,6 +231,7 @@ export default function AdminCallCenter() {
   const nextSevenCount = enabledTasks.filter(task => {
     const effectiveDate = getTaskEffectiveDate(task);
     return !isTaskClosed(task.status) &&
+      isTaskCampaignWindowOpen(task, today) &&
       !isTaskExpired(task, today) &&
       !isTaskBeforeTrackingStart(task) &&
       effectiveDate > today &&
@@ -913,6 +917,7 @@ function isDateInRange(date: string, start: string, end: string): boolean {
 }
 
 function isTaskPossibleUntilToday(task: CallTask, today: string): boolean {
+  if (!isTaskCampaignWindowOpen(task, today)) return false;
   if (!task.dueDate || task.dueDate > today) return false;
   if (task.dueDate < CALL_TRACKING_START_DATE) return false;
   return true;

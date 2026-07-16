@@ -27,7 +27,7 @@ import {
   parseClientWorkbook,
   syncCampaignTasks,
 } from '../callCenter';
-import { CALL_WORKFLOW_CONFIG } from '../callWorkflowConfig';
+import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
 
 type CampaignDraft = {
@@ -57,8 +57,8 @@ const IMPORT_CARDS: Array<{
   },
   {
     kind: 'expirations',
-    title: 'Scadenze rata e annuali',
-    description: 'Calcola il richiamo 10 giorni prima della scadenza.',
+    title: 'Scadenze annuali',
+    description: 'Campagna annuali dal 01/09/2026: richiamo 45 giorni prima della scadenza.',
   },
   {
     kind: 'winback',
@@ -69,7 +69,8 @@ const IMPORT_CARDS: Array<{
 
 const VISIBLE_IMPORT_CARDS = IMPORT_CARDS.filter(card =>
   card.kind !== 'expirations' ||
-  CALL_WORKFLOW_CONFIG.features.expirationCallsEnabled
+  isCallCategoryEnabled('scadenza_rata') ||
+  isCallCategoryEnabled('scadenza_annuale')
 );
 
 export default function AdminImportPanel() {

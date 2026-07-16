@@ -39,9 +39,10 @@ export const CLIENT_IMPORT_CONFIG = {
     scheduleRule: {
       type: 'base_date_plus_months_minus_reminder_days',
       reminderDays: 10,
+      annualCampaignStartDate: '2026-09-01',
       expirationTypes: {
-        R: { label: 'Rata', monthsToAdd: 6 },
-        A: { label: 'Annuale', monthsToAdd: 12 },
+        R: { label: 'Rata', monthsToAdd: 6, reminderDays: 10 },
+        A: { label: 'Annuale', monthsToAdd: 12, reminderDays: 45 },
       },
     },
   },
