@@ -511,13 +511,13 @@ export default function AdminImportPanel() {
           <p className="text-sm text-slate-500">
             I nuovi clienti restano memorizzati: le campagne create in seguito
             generano automaticamente le relative chiamate. Il Winback accetta
-            più file mensili e li mantiene cumulativi.
+            più file mensili e li mantiene cumulativi. Il tipo di import viene
+            deciso dalla finestra in cui carichi il file.
           </p>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           {VISIBLE_IMPORT_CARDS.map(card => {
-            const config = CLIENT_IMPORT_CONFIG[card.kind];
             const files = selectedFiles[card.kind] || [];
             const isImporting = importingKind === card.kind;
             const allowsMultipleFiles = card.kind === 'winback';
@@ -534,14 +534,9 @@ export default function AdminImportPanel() {
                   </div>
                 </div>
 
-                <div className="mt-5 text-xs text-slate-500 space-y-1">
-                  <p><strong>File:</strong> {config.fileName}</p>
-                  <p>
-                    <strong>Scheda:</strong>{' '}
-                    {card.kind === 'winback'
-                      ? `${config.sheetName} o primo foglio disponibile`
-                      : config.sheetName}
-                  </p>
+                <div className="mt-5 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                  Carica qui l’export Excel: nome file e nome scheda non vengono usati
+                  per riconoscere il tipo di import.
                 </div>
 
                 <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">

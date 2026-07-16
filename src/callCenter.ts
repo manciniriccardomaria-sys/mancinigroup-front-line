@@ -170,11 +170,10 @@ export async function parseClientWorkbook(
 
   const config = CLIENT_IMPORT_CONFIG[kind];
   const requestedSheetName = config.sheetName;
-  const worksheet = workbook.getWorksheet(requestedSheetName) ||
-    (kind === 'winback' ? workbook.worksheets[0] : undefined);
+  const worksheet = workbook.getWorksheet(requestedSheetName) || workbook.worksheets[0];
 
   if (!worksheet) {
-    throw new Error(`Scheda "${requestedSheetName}" non trovata nel file.`);
+    throw new Error('Nessun foglio leggibile trovato nel file.');
   }
 
   const tasks: ParsedImport['tasks'] = [];
