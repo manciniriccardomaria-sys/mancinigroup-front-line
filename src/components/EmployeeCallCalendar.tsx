@@ -571,6 +571,11 @@ export default function EmployeeCallCalendar() {
                           <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">
                             {task.categoryLabel}
                           </span>
+                          {task.autoPremium && (
+                            <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">
+                              Premio auto {formatPremium(task.autoPremium)}
+                            </span>
+                          )}
                           {isOverdue && (
                             <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">
                               Arretrata · {format(parseISO(effectiveDate), 'dd/MM/yyyy')}

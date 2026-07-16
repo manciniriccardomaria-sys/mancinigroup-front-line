@@ -593,15 +593,17 @@ export default function AdminCallCenter() {
                   <td className="px-4 py-3 text-xs text-slate-500">
                     <div className="space-y-1">
                       <p>
-                        {[task.policyNumber, task.policyType, task.vehiclePlate]
+                        {[
+                          task.policyNumber,
+                          task.policyType,
+                          task.vehiclePlate,
+                          task.autoPremium ? `Premio auto ${formatPremium(task.autoPremium)}` : '',
+                        ]
                           .filter(Boolean)
                           .join(' · ') || '—'}
                       </p>
                       {task.fiscalCode && (
                         <p><strong>Codice fiscale:</strong> {task.fiscalCode}</p>
-                      )}
-                      {task.autoPremium && (
-                        <p><strong>Premio auto:</strong> {formatPremium(task.autoPremium)}</p>
                       )}
                       {task.category === 'winback' && task.exitDate && (
                         <p><strong>Uscita:</strong> {formatDate(task.exitDate)}</p>
