@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   BarChart3,
   CalendarClock,
@@ -79,9 +79,26 @@ export default function AdminCallCenter() {
     workStartDate,
     workEndDate,
   ), [workPeriod, today, workStartDate, workEndDate]);
+  const taskWindowEnd = useMemo(() => {
+    const requestedEnds = [
+      nextSevenDays,
+      endDate,
+      workPeriodRange.end,
+    ].filter(Boolean);
+    return requestedEnds.reduce((latest, value) =>
+      value > latest ? value : latest,
+      nextSevenDays,
+    );
+  }, [endDate, nextSevenDays, workPeriodRange.end]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'call_tasks'), snapshot => {
+    const tasksQuery = query(
+      collection(db, 'call_tasks'),
+      where('dueDate', '>=', CALL_TRACKING_START_DATE),
+      where('dueDate', '<=', taskWindowEnd),
+    );
+
+    return onSnapshot(tasksQuery, snapshot => {
       setTasks(snapshot.docs.map(item => ({
         id: item.id,
         ...item.data(),
@@ -91,7 +108,7 @@ export default function AdminCallCenter() {
       console.error('Error loading call tasks:', error);
       setLoading(false);
     });
-  }, []);
+  }, [taskWindowEnd]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({

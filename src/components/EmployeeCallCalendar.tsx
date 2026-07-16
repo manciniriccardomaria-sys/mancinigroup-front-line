@@ -34,6 +34,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { getAuthorizedEmployee } from '../constants';
+import { SOURCE_DIRECTORY } from '../sourceDirectory';
 import {
   Campaign,
   CallTask,
@@ -54,6 +55,7 @@ import CallCategoryFilter, {
   CallCategorySelection,
   CampaignFilterOption,
 } from './CallCategoryFilter';
+import { subscribeToCallTasksBySourceCodes } from '../callTaskSubscriptions';
 
 type SourceMode = 'mine' | 'help';
 
@@ -80,20 +82,27 @@ export default function EmployeeCallCalendar() {
   const currentName = employee?.name || auth.currentUser?.displayName || 'Dipendente';
   const today = getItalyDate();
 
+  const selectedSourceCodes = useMemo(() => {
+    if (sourceMode === 'mine') return [...ownSourceCodes];
+    return [...new Set(selectedHelpSources.map(key => key.split('::')[0]).filter(Boolean))];
+  }, [ownSourceCodes, sourceMode, selectedHelpSources]);
+
   useEffect(() => {
-    return onSnapshot(collection(db, 'call_tasks'), snapshot => {
-      setTasks(snapshot.docs.map(item => ({
-        id: item.id,
-        ...item.data(),
-      } as CallTask)));
-      setLoading(false);
-      setError('');
-    }, snapshotError => {
-      console.error('Error loading call calendar:', snapshotError);
-      setError('Non è stato possibile caricare il calendario chiamate.');
-      setLoading(false);
-    });
-  }, []);
+    setLoading(true);
+    return subscribeToCallTasksBySourceCodes(
+      selectedSourceCodes,
+      nextTasks => {
+        setTasks(nextTasks);
+        setLoading(false);
+        setError('');
+      },
+      snapshotError => {
+        console.error('Error loading call calendar:', snapshotError);
+        setError('Non è stato possibile caricare il calendario chiamate.');
+        setLoading(false);
+      },
+    );
+  }, [selectedSourceCodes]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
@@ -132,20 +141,13 @@ export default function EmployeeCallCalendar() {
   const availableHelpSources = useMemo(() => {
     const sources = new Map<string, { key: string; code: string; name: string }>();
 
-    enabledTasks.forEach(task => {
-      if (
-        ownSourceCodes.some(code => code === task.sourceCode) ||
-        isTaskExpired(task, today) ||
-        isTaskBeforeTrackingStart(task)
-      ) {
-        return;
-      }
-
-      const key = getSourceKey(task);
+    SOURCE_DIRECTORY.forEach(source => {
+      if (ownSourceCodes.some(code => code === source.code)) return;
+      const key = `${source.code}::${source.name}`;
       sources.set(key, {
         key,
-        code: task.sourceCode,
-        name: task.sourceName,
+        code: source.code,
+        name: source.name,
       });
     });
 
@@ -153,7 +155,7 @@ export default function EmployeeCallCalendar() {
       const codeComparison = first.code.localeCompare(second.code, 'it');
       return codeComparison || first.name.localeCompare(second.name, 'it');
     });
-  }, [enabledTasks, ownSourceCodes, today]);
+  }, [ownSourceCodes]);
 
   const modeTasks = useMemo(() => enabledTasks.filter(task => {
     if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;

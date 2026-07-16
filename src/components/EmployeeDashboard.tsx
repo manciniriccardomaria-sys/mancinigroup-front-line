@@ -36,6 +36,7 @@ import {
   isTaskActionable,
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
+import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -154,14 +155,14 @@ export default function EmployeeDashboard() {
     }
   ), [categories]);
 
-  useEffect(() => onSnapshot(collection(db, 'call_tasks'), snapshot => {
-    setCallTasks(snapshot.docs.map(item => ({
-      id: item.id,
-      ...item.data(),
-    } as CallTask)));
-  }, callError => {
-    console.error('Error loading call notification count:', callError);
-  }), []);
+  useEffect(() => subscribeToCallTasksForEmployee(
+    employee?.sourceCodes || [],
+    auth.currentUser?.uid || '',
+    setCallTasks,
+    callError => {
+      console.error('Error loading call notification count:', callError);
+    },
+  ), [employee]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
