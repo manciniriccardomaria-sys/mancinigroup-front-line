@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  endOfWeek,
+  addDays,
   format,
   isValid,
   isWithinInterval,
   parseISO,
-  startOfWeek,
 } from 'date-fns';
 import { it } from 'date-fns/locale';
 import {
@@ -143,8 +142,8 @@ export default function EmployeeCustomerClusters() {
 
   const today = useMemo(() => parseISO(getItalyDate()), []);
   const weekInterval = useMemo(() => ({
-    start: startOfWeek(today, { weekStartsOn: 1 }),
-    end: endOfWeek(today, { weekStartsOn: 1 }),
+    start: today,
+    end: addDays(today, 7),
   }), [today]);
 
   const summaries = useMemo<BucketSummary[]>(() => BUCKETS.map(bucket => {
@@ -224,7 +223,7 @@ export default function EmployeeCustomerClusters() {
           <p className="text-sm text-slate-500 mt-1">{sourceLabel || 'Fonti Rossella'}</p>
         </div>
         <div className="text-xs font-bold text-slate-500">
-          Settimana {format(weekInterval.start, 'dd MMM', { locale: it })} - {format(weekInterval.end, 'dd MMM yyyy', { locale: it })}
+          Prossimi 7 giorni {format(weekInterval.start, 'dd MMM', { locale: it })} - {format(weekInterval.end, 'dd MMM yyyy', { locale: it })}
         </div>
       </div>
 
@@ -315,7 +314,7 @@ export default function EmployeeCustomerClusters() {
               <div>
                 <h3 className="font-black text-slate-900">Scadenze quietanza della settimana</h3>
                 <p className="text-xs text-slate-500">
-                  Clienti della fonte con quietanza tra {formatDate(weekInterval.start)} e {formatDate(weekInterval.end)}.
+                  Clienti della fonte con quietanza da oggi a sette giorni: {formatDate(weekInterval.start)} - {formatDate(weekInterval.end)}.
                 </p>
               </div>
               <span className="text-sm font-black text-[#003781]">
