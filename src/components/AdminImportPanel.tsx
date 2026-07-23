@@ -15,6 +15,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Star,
   Trash2,
   Upload,
   X,
@@ -30,6 +31,10 @@ import {
   syncCampaignTasks,
 } from '../callCenter';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
+import {
+  importCustomerClusters,
+  parseCustomerClusterWorkbook,
+} from '../customerClusters';
 
 type CampaignDraft = {
   id?: string;
@@ -83,8 +88,11 @@ export default function AdminImportPanel() {
   const [campaignError, setCampaignError] = useState('');
   const [campaignMessage, setCampaignMessage] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Partial<Record<ImportKind, File[]>>>({});
+  const [selectedClusterFile, setSelectedClusterFile] = useState<File | null>(null);
   const [importingKind, setImportingKind] = useState<ImportKind | null>(null);
+  const [importingClusters, setImportingClusters] = useState(false);
   const [importMessages, setImportMessages] = useState<Partial<Record<ImportKind, string>>>({});
+  const [clusterImportMessage, setClusterImportMessage] = useState('');
 
   useEffect(() => {
     return onSnapshot(collection(db, 'campaigns'), snapshot => {
@@ -276,6 +284,35 @@ export default function AdminImportPanel() {
       }));
     } finally {
       setImportingKind(null);
+    }
+  };
+
+  const runClusterImport = async () => {
+    if (!selectedClusterFile) return;
+
+    setImportingClusters(true);
+    setClusterImportMessage('');
+
+    try {
+      const parsed = await parseCustomerClusterWorkbook(selectedClusterFile);
+      const result = await importCustomerClusters(parsed);
+
+      setClusterImportMessage([
+        `${result.importedRecords} clienti letti`,
+        `${result.created} nuovi`,
+        `${result.updated} aggiornati`,
+        `${result.unchanged} invariati`,
+        `${result.duplicateRows} duplicati interni ignorati`,
+        `${result.skippedRows} righe saltate`,
+        `Scheda: ${parsed.sheetName}`,
+      ].join(' · '));
+    } catch (error) {
+      console.error('Customer cluster import error:', error);
+      setClusterImportMessage(error instanceof Error
+        ? error.message
+        : 'Importazione cluster clienti non riuscita.');
+    } finally {
+      setImportingClusters(false);
     }
   };
 
@@ -517,7 +554,7 @@ export default function AdminImportPanel() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
           {VISIBLE_IMPORT_CARDS.map(card => {
             const files = selectedFiles[card.kind] || [];
             const isImporting = importingKind === card.kind;
@@ -576,7 +613,7 @@ export default function AdminImportPanel() {
                 <button
                   type="button"
                   onClick={() => runImport(card.kind)}
-                  disabled={files.length === 0 || isImporting || importingKind !== null}
+                  disabled={files.length === 0 || isImporting || importingKind !== null || importingClusters}
                   className="mt-3 w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
                 >
                   {isImporting ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
@@ -592,6 +629,57 @@ export default function AdminImportPanel() {
               </div>
             );
           })}
+
+          <div className="bg-white border border-slate-200 rounded-lg p-5">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                <Star size={22} />
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-800">Cluster clienti</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Importa Estrazione e aggiorna clienti, stelle, premi e provvigioni.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
+              Carica qui l’export Estrazione. Nome file e nome scheda non sono vincolanti.
+            </div>
+
+            <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">
+              <Upload size={18} />
+              {selectedClusterFile ? selectedClusterFile.name : 'Seleziona file'}
+              <input
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={event => {
+                  const file = event.target.files?.[0] || null;
+                  if (!file) return;
+                  setSelectedClusterFile(file);
+                  setClusterImportMessage('');
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={runClusterImport}
+              disabled={!selectedClusterFile || importingClusters || importingKind !== null}
+              className="mt-3 w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+            >
+              {importingClusters ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
+              {importingClusters ? 'Importazione...' : 'Importa'}
+            </button>
+
+            {clusterImportMessage && (
+              <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-lg flex gap-2">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <span>{clusterImportMessage}</span>
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>

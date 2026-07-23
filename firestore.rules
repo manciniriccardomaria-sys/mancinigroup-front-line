@@ -42,6 +42,11 @@ service cloud.firestore {
       return isApprovedAdminEmail();
     }
 
+    function isCustomerClusterViewer() {
+      return isAuthenticated() &&
+        request.auth.token.email == "rossellamancinigroup@gmail.com";
+    }
+
     function ownsReportId(reportId) {
       return isApprovedEmployeeEmail() &&
         reportId.matches(request.auth.uid + '_.*');
@@ -50,6 +55,15 @@ service cloud.firestore {
     function roleMatchesApprovedEmail(data) {
       return (isApprovedAdminEmail() && data.role == 'admin') ||
         (isApprovedEmployeeEmail() && data.role == 'employee');
+    }
+
+    function isOptionalDateString(value) {
+      return value is string &&
+        (value == '' || value.matches('^\\d{4}-\\d{2}-\\d{2}$'));
+    }
+
+    function isNumberValue(value) {
+      return value is int || value is float;
     }
 
     // ===============================================================
@@ -228,6 +242,49 @@ service cloud.firestore {
           'text-yellow-600'
         ] &&
         data.order is int && data.order >= 0 && data.order <= 100000;
+    }
+
+    function isValidCustomerCluster(data) {
+      return data.keys().hasAll([
+        'id',
+        'clientName',
+        'sourceCode',
+        'sourceName',
+        'sourceOwnerEmail',
+        'sourceOwnerName',
+        'quietanzaDate',
+        'birthDate',
+        'address',
+        'phone',
+        'customerTenure',
+        'policyCount',
+        'policyBucket',
+        'starLevel',
+        'annualPremium',
+        'agencyCommissions',
+        'recommendation',
+        'sourceFingerprint'
+      ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+        data.clientName is string &&
+        data.clientName.size() > 0 && data.clientName.size() < 200 &&
+        data.sourceCode is string && data.sourceCode.size() < 20 &&
+        data.sourceName is string && data.sourceName.size() < 200 &&
+        data.sourceOwnerEmail is string && data.sourceOwnerEmail.size() < 150 &&
+        data.sourceOwnerName is string && data.sourceOwnerName.size() < 100 &&
+        isOptionalDateString(data.quietanzaDate) &&
+        isOptionalDateString(data.birthDate) &&
+        data.address is string && data.address.size() < 500 &&
+        data.phone is string && data.phone.size() < 100 &&
+        isNumberValue(data.customerTenure) && data.customerTenure >= 0 &&
+        data.policyCount is int && data.policyCount >= 1 && data.policyCount <= 1000 &&
+        data.policyBucket in ['1', '2', '3', '4', '5', '>5'] &&
+        data.starLevel is int && data.starLevel >= 1 && data.starLevel <= 6 &&
+        isNumberValue(data.annualPremium) && data.annualPremium >= 0 &&
+        isNumberValue(data.agencyCommissions) &&
+        data.recommendation is string && data.recommendation.size() < 300 &&
+        data.sourceFingerprint is string &&
+        data.sourceFingerprint.size() > 0 && data.sourceFingerprint.size() < 100;
     }
 
     function isValidCallTask(data) {
@@ -443,6 +500,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create, update: if isAdmin() &&
         isValidExpirationRecord(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /customer_clusters/{recordId} {
+      allow get, list: if isAdmin() || isCustomerClusterViewer();
+      allow create, update: if isAdmin() &&
+        isValidCustomerCluster(request.resource.data);
       allow delete: if isAdmin();
     }
 
