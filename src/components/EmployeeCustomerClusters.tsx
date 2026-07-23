@@ -10,6 +10,7 @@ import { it } from 'date-fns/locale';
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronDown,
   Gift,
   Loader2,
   Phone,
@@ -42,6 +43,12 @@ type BucketSummary = {
   color: string;
   textColor: string;
   note: string;
+};
+
+type QuietanzaDayGroup = {
+  date: string;
+  records: CustomerClusterRecord[];
+  agencyCommissions: number;
 };
 
 const BUCKETS: Array<Omit<BucketSummary, 'count' | 'annualPremium' | 'agencyCommissions'>> = [
@@ -97,6 +104,7 @@ const BUCKETS: Array<Omit<BucketSummary, 'count' | 'annualPremium' | 'agencyComm
 
 export default function EmployeeCustomerClusters() {
   const [records, setRecords] = useState<CustomerClusterRecord[]>([]);
+  const [openQuietanzaDays, setOpenQuietanzaDays] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const userEmail = auth.currentUser?.email?.trim().toLowerCase() || '';
@@ -173,6 +181,40 @@ export default function EmployeeCustomerClusters() {
       return dateComparison || first.clientName.localeCompare(second.clientName, 'it');
     }), [records, weekInterval]);
 
+  const weeklyQuietanzaGroups = useMemo<QuietanzaDayGroup[]>(() => {
+    const groups = new Map<string, CustomerClusterRecord[]>();
+
+    weeklyQuietanzaRecords.forEach(record => {
+      if (!record.quietanzaDate) return;
+      const existing = groups.get(record.quietanzaDate) || [];
+      groups.set(record.quietanzaDate, [...existing, record]);
+    });
+
+    return [...groups.entries()]
+      .map(([date, dayRecords]) => ({
+        date,
+        records: dayRecords,
+        agencyCommissions: dayRecords.reduce(
+          (total, record) => total + (record.agencyCommissions || 0),
+          0,
+        ),
+      }))
+      .sort((first, second) => first.date.localeCompare(second.date));
+  }, [weeklyQuietanzaRecords]);
+
+  useEffect(() => {
+    setOpenQuietanzaDays(previous => {
+      const availableDays = new Set(weeklyQuietanzaGroups.map(group => group.date));
+      const next = new Set([...previous].filter(day => availableDays.has(day)));
+
+      if (next.size === 0 && weeklyQuietanzaGroups[0]) {
+        next.add(weeklyQuietanzaGroups[0].date);
+      }
+
+      return areSetsEqual(previous, next) ? previous : next;
+    });
+  }, [weeklyQuietanzaGroups]);
+
   const totals = useMemo(() => ({
     clients: records.length,
     annualPremium: records.reduce((total, record) => total + (record.annualPremium || 0), 0),
@@ -190,6 +232,15 @@ export default function EmployeeCustomerClusters() {
       return `${code} ${sourceName}`;
     })
     .join(' · ');
+
+  const toggleQuietanzaDay = (date: string) => {
+    setOpenQuietanzaDays(previous => {
+      const next = new Set(previous);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
 
   if (!canView) {
     return (
@@ -231,7 +282,7 @@ export default function EmployeeCustomerClusters() {
         <MetricCard icon={Users} value={formatInteger(totals.clients)} label="Clienti in portafoglio" />
         <MetricCard icon={TrendingUp} value={formatMoney(totals.agencyCommissions)} label="Provvigioni generate" />
         <MetricCard icon={Star} value={formatMoney(totals.annualPremium)} label="Premio annuo clienti" />
-        <MetricCard icon={CalendarDays} value={formatInteger(totals.weeklyQuietanza)} label="Quietanze in settimana" />
+        <MetricCard icon={CalendarDays} value={formatInteger(totals.weeklyQuietanza)} label="Quietanze prossimi 7 giorni" />
       </div>
 
       {records.length === 0 ? (
@@ -312,7 +363,7 @@ export default function EmployeeCustomerClusters() {
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="font-black text-slate-900">Scadenze quietanza della settimana</h3>
+                <h3 className="font-black text-slate-900">Scadenze quietanza prossimi 7 giorni</h3>
                 <p className="text-xs text-slate-500">
                   Clienti della fonte con quietanza da oggi a sette giorni: {formatDate(weekInterval.start)} - {formatDate(weekInterval.end)}.
                 </p>
@@ -324,82 +375,124 @@ export default function EmployeeCustomerClusters() {
 
             {weeklyQuietanzaRecords.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-sm">
-                Nessuna scadenza quietanza in questa settimana.
+                Nessuna scadenza quietanza nei prossimi 7 giorni.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 font-black">Scadenza</th>
-                      <th className="px-4 py-3 font-black">Cliente</th>
-                      <th className="px-4 py-3 font-black">Stelle</th>
-                      <th className="px-4 py-3 font-black">Fonte</th>
-                      <th className="px-4 py-3 font-black">Nascita</th>
-                      <th className="px-4 py-3 font-black">Contatti</th>
-                      <th className="px-4 py-3 font-black">Anzianità</th>
-                      <th className="px-4 py-3 font-black">Polizze</th>
-                      <th className="px-4 py-3 font-black">Premio</th>
-                      <th className="px-4 py-3 font-black">Provvigioni</th>
-                      <th className="px-4 py-3 font-black">Nota</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {weeklyQuietanzaRecords.map(record => (
-                      <tr key={record.id} className="hover:bg-slate-50/80">
-                        <td className="px-4 py-3 font-bold text-slate-900 whitespace-nowrap">
-                          {formatDate(record.quietanzaDate)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-slate-900">{record.clientName}</p>
-                          <p className="text-xs text-slate-500 max-w-[220px] truncate">{record.address || 'Indirizzo assente'}</p>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <StarRating stars={record.starLevel} compact />
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          <span className="font-bold text-slate-900">{record.sourceCode}</span>
-                          <p className="text-xs">{record.sourceName}</p>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                          {formatDate(record.birthDate)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {record.phone ? (
-                            <a
-                              href={`tel:${record.phone}`}
-                              className="inline-flex items-center gap-1 font-bold text-[#003781]"
-                            >
-                              <Phone size={14} />
-                              {record.phone}
-                            </a>
-                          ) : (
-                            <span className="text-slate-400">Telefono assente</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                          {formatTenure(record.customerTenure)}
-                        </td>
-                        <td className="px-4 py-3 font-black text-slate-900">{record.policyCount}</td>
-                        <td className="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">
-                          {formatMoney(record.annualPremium)}
-                        </td>
-                        <td className="px-4 py-3 font-black text-slate-900 whitespace-nowrap">
-                          {formatMoney(record.agencyCommissions)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 min-w-[180px]">
-                          {record.recommendation || '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="divide-y divide-slate-200">
+                {weeklyQuietanzaGroups.map(group => {
+                  const isOpen = openQuietanzaDays.has(group.date);
+
+                  return (
+                    <div key={group.date}>
+                      <button
+                        type="button"
+                        onClick={() => toggleQuietanzaDay(group.date)}
+                        aria-expanded={isOpen}
+                        className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-black text-slate-900">
+                            {formatDateWithWeekday(group.date)}
+                          </p>
+                          <p className="text-xs font-bold text-slate-500 mt-1">
+                            {group.records.length} clienti · Provvigioni {formatMoney(group.agencyCommissions)}
+                          </p>
+                        </div>
+                        <ChevronDown
+                          size={20}
+                          className={`shrink-0 text-slate-400 transition-transform ${
+                            isOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {isOpen && (
+                        <div className="border-t border-slate-100 overflow-x-auto">
+                          <QuietanzaRecordsTable records={group.records} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </>
       )}
     </section>
+  );
+}
+
+function QuietanzaRecordsTable({
+  records,
+}: {
+  records: CustomerClusterRecord[];
+}) {
+  return (
+    <table className="w-full min-w-[1040px] text-sm">
+      <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+        <tr>
+          <th className="px-4 py-3 font-black">Cliente</th>
+          <th className="px-4 py-3 font-black">Stelle</th>
+          <th className="px-4 py-3 font-black">Fonte</th>
+          <th className="px-4 py-3 font-black">Nascita</th>
+          <th className="px-4 py-3 font-black">Contatti</th>
+          <th className="px-4 py-3 font-black">Anzianità</th>
+          <th className="px-4 py-3 font-black">Polizze</th>
+          <th className="px-4 py-3 font-black">Premio</th>
+          <th className="px-4 py-3 font-black">Provvigioni</th>
+          <th className="px-4 py-3 font-black">Nota</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100">
+        {records.map(record => (
+          <tr key={record.id} className="hover:bg-slate-50/80">
+            <td className="px-4 py-3">
+              <p className="font-bold text-slate-900">{record.clientName}</p>
+              <p className="text-xs text-slate-500 max-w-[220px] truncate">
+                {record.address || 'Indirizzo assente'}
+              </p>
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap">
+              <StarRating stars={record.starLevel} compact />
+            </td>
+            <td className="px-4 py-3 text-slate-600">
+              <span className="font-bold text-slate-900">{record.sourceCode}</span>
+              <p className="text-xs">{record.sourceName}</p>
+            </td>
+            <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+              {formatDate(record.birthDate)}
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap">
+              {record.phone ? (
+                <a
+                  href={`tel:${record.phone}`}
+                  className="inline-flex items-center gap-1 font-bold text-[#003781]"
+                >
+                  <Phone size={14} />
+                  {record.phone}
+                </a>
+              ) : (
+                <span className="text-slate-400">Telefono assente</span>
+              )}
+            </td>
+            <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+              {formatTenure(record.customerTenure)}
+            </td>
+            <td className="px-4 py-3 font-black text-slate-900">{record.policyCount}</td>
+            <td className="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">
+              {formatMoney(record.annualPremium)}
+            </td>
+            <td className="px-4 py-3 font-black text-slate-900 whitespace-nowrap">
+              {formatMoney(record.agencyCommissions)}
+            </td>
+            <td className="px-4 py-3 text-slate-600 min-w-[180px]">
+              {record.recommendation || '-'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -457,6 +550,13 @@ function formatDate(value: Date | string): string {
   return format(date, 'dd/MM/yyyy', { locale: it });
 }
 
+function formatDateWithWeekday(value: string): string {
+  const date = parseSafeDate(value);
+  if (!date) return '-';
+  const formatted = format(date, 'EEEE dd/MM/yyyy', { locale: it });
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('it-IT', {
     style: 'currency',
@@ -475,4 +575,9 @@ function formatTenure(value: number): string {
   if (!value) return '-';
   const rounded = Math.round(value * 10) / 10;
   return `${rounded} anni`;
+}
+
+function areSetsEqual(first: Set<string>, second: Set<string>): boolean {
+  if (first.size !== second.size) return false;
+  return [...first].every(item => second.has(item));
 }
