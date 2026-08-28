@@ -42,11 +42,6 @@ service cloud.firestore {
       return isApprovedAdminEmail();
     }
 
-    function isCustomerClusterViewer() {
-      return isAuthenticated() &&
-        request.auth.token.email == "rossellamancinigroup@gmail.com";
-    }
-
     function ownsReportId(reportId) {
       return isApprovedEmployeeEmail() &&
         reportId.matches(request.auth.uid + '_.*');
@@ -137,22 +132,6 @@ service cloud.firestore {
         (data.campaignKind != 'annualExpirations' ||
           data.daysBeforeExpiration > 0) &&
         data.active is bool;
-    }
-
-    function isValidNotice(data) {
-      return data.keys().hasAll([
-        'title',
-        'body',
-        'active',
-        'createdBy'
-      ]) &&
-        data.title is string &&
-        data.title.size() > 0 && data.title.size() <= 120 &&
-        data.body is string &&
-        data.body.size() > 0 && data.body.size() <= 3000 &&
-        data.active is bool &&
-        data.createdBy is string &&
-        data.createdBy.size() > 0 && data.createdBy.size() < 150;
     }
 
     function isValidDailyObjectives(data) {
@@ -459,13 +438,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    match /notices/{noticeId} {
-      allow get, list: if isApprovedUserEmail();
-      allow create, update: if isAdmin() &&
-        isValidNotice(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
     match /daily_objectives/{objectiveId} {
       allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() &&
@@ -504,7 +476,7 @@ service cloud.firestore {
     }
 
     match /customer_clusters/{recordId} {
-      allow get, list: if isAdmin() || isCustomerClusterViewer();
+      allow get, list: if isAdmin();
       allow create, update: if isAdmin() &&
         isValidCustomerCluster(request.resource.data);
       allow delete: if isAdmin();

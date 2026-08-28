@@ -27,7 +27,6 @@ import {
   ChevronRight as ChevronRightIcon,
   AlertTriangle,
   RefreshCw,
-  Megaphone,
   Target,
   ClipboardList,
 } from 'lucide-react';
@@ -63,16 +62,12 @@ import AdminImportPanel from './AdminImportPanel';
 import AdminCallCenter from './AdminCallCenter';
 import AdminDailyObjectives from './AdminDailyObjectives';
 import AdminReportCategories from './AdminReportCategories';
-import AdminNotices from './AdminNotices';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 
 type Tab =
-  | 'overview'
-  | 'dettaglio_fl'
-  | 'storico'
+  | 'analisi'
   | 'rendicontazione'
   | 'obiettivi'
-  | 'avvisi'
   | 'chiamate'
   | 'importazioni';
 type TimeRange = 'day' | 'week' | 'month' | 'custom';
@@ -82,7 +77,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedTab, setSelectedTab] = useState<Tab>('overview');
+  const [selectedTab, setSelectedTab] = useState<Tab>('analisi');
   
   // Filters
   const [timeRange, setTimeRange] = useState<TimeRange>('day');
@@ -334,32 +329,16 @@ export default function AdminDashboard() {
 
   const exportToCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    
-    if (selectedTab === 'overview') {
-      csvContent += "Categoria,Totale\n";
-      categoryTotals.forEach(cat => {
-        csvContent += `${cat.label},${cat.total}\n`;
-      });
-    } else if (selectedTab === 'dettaglio_fl') {
-      const headers = ["Dipendente", ...selectedCategoriesFL.map(id => categories.find(c => c.id === id)?.label)];
-      csvContent += headers.join(",") + "\n";
-      employeeComparisonData.forEach(emp => {
-        const row = [emp.name, ...selectedCategoriesFL.map(id => emp[id] || 0)];
-        csvContent += row.join(",") + "\n";
-      });
-    } else {
-      const headers = ["Data", ...selectedCategoriesStorico.map(id => categories.find(c => c.id === id)?.label)];
-      csvContent += headers.join(",") + "\n";
-      historyComparisonData.forEach(day => {
-        const row = [day.fullDate, ...selectedCategoriesStorico.map(id => day[id] || 0)];
-        csvContent += row.join(",") + "\n";
-      });
-    }
+
+    csvContent += "Categoria,Totale\n";
+    categoryTotals.forEach(cat => {
+      csvContent += `${cat.label},${cat.total}\n`;
+    });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `mancinigroup_export_${selectedTab}_${getItalyDate()}.csv`);
+    link.setAttribute("download", `mancinigroup_export_analisi_${getItalyDate()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -450,23 +429,11 @@ export default function AdminDashboard() {
         </div>
 
         <nav className="px-3 space-y-1 pb-5">
-          <NavItem 
-            active={selectedTab === 'overview'} 
-            onClick={() => setSelectedTab('overview')}
+          <NavItem
+            active={selectedTab === 'analisi'}
+            onClick={() => setSelectedTab('analisi')}
             icon={<LayoutDashboard size={18} />}
-            label="Dashboard"
-          />
-          <NavItem 
-            active={selectedTab === 'dettaglio_fl'} 
-            onClick={() => setSelectedTab('dettaglio_fl')}
-            icon={<Users size={18} />}
-            label="Dettaglio FL"
-          />
-          <NavItem 
-            active={selectedTab === 'storico'} 
-            onClick={() => setSelectedTab('storico')}
-            icon={<History size={18} />}
-            label="Storico"
+            label="Analisi"
           />
           <NavItem
             active={selectedTab === 'rendicontazione'}
@@ -479,12 +446,6 @@ export default function AdminDashboard() {
             onClick={() => setSelectedTab('obiettivi')}
             icon={<Target size={18} />}
             label="Obiettivi"
-          />
-          <NavItem
-            active={selectedTab === 'avvisi'}
-            onClick={() => setSelectedTab('avvisi')}
-            icon={<Megaphone size={18} />}
-            label="Avvisi"
           />
           <NavItem
             active={selectedTab === 'chiamate'}
@@ -518,20 +479,19 @@ export default function AdminDashboard() {
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold text-slate-800 leading-tight">
-                {selectedTab === 'overview' && 'Panoramica Agenzia'}
-                {selectedTab === 'dettaglio_fl' && 'Dettaglio Front Line'}
-                {selectedTab === 'storico' && 'Analisi Storica'}
+                {selectedTab === 'analisi' && 'Analisi Front Line'}
                 {selectedTab === 'rendicontazione' && 'Rendicontazione Giornaliera'}
                 {selectedTab === 'obiettivi' && 'Obiettivi Front Line'}
-                {selectedTab === 'avvisi' && 'Avvisi Front Line'}
                 {selectedTab === 'chiamate' && 'Monitoraggio Chiamate'}
                 {selectedTab === 'importazioni' && 'Importazioni e Campagne'}
               </h2>
-              <p className="text-slate-500 text-xs mt-0.5">{periodLabel}</p>
+              {selectedTab === 'analisi' && (
+                <p className="text-slate-500 text-xs mt-0.5">{periodLabel}</p>
+              )}
             </div>
 
             {/* Date Range Selector */}
-            {['overview', 'dettaglio_fl', 'storico'].includes(selectedTab) && (
+            {selectedTab === 'analisi' && (
               <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={exportToCSV}
@@ -584,8 +544,8 @@ export default function AdminDashboard() {
 
         {/* Tab Content */}
         <div className="space-y-5">
-          {/* OVERVIEW TAB */}
-          {selectedTab === 'overview' && (
+          {/* ANALISI: PANORAMICA */}
+          {selectedTab === 'analisi' && (
             <div className="space-y-5">
               <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard
@@ -715,11 +675,16 @@ export default function AdminDashboard() {
                         <button 
                           onClick={() => {
                             setSelectedEmployees([emp.uid]);
-                            setSelectedTab('dettaglio_fl');
+                            window.requestAnimationFrame(() => {
+                              document.getElementById('analisi-dettaglio')?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start',
+                              });
+                            });
                           }}
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-[#003781] hover:bg-blue-50 transition-all"
                         >
-                          Apri
+                          Analizza
                           <ChevronRight size={14} />
                         </button>
                       </td>
@@ -732,9 +697,14 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* DETTAGLIO FL TAB */}
-          {selectedTab === 'dettaglio_fl' && (
-            <div className="space-y-4">
+          {/* ANALISI: DETTAGLIO FL */}
+          {selectedTab === 'analisi' && (
+            <div id="analisi-dettaglio" className="space-y-4 scroll-mt-5">
+              <SectionDivider
+                icon={<Users size={19} />}
+                title="Dettaglio per fonte"
+                description="Confronta fonti e attività nel periodo selezionato."
+              />
               {/* Employee Selection */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -960,9 +930,14 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* STORICO TAB */}
-          {selectedTab === 'storico' && (
+          {/* ANALISI: ANDAMENTO STORICO */}
+          {selectedTab === 'analisi' && (
             <div className="space-y-4">
+              <SectionDivider
+                icon={<History size={19} />}
+                title="Andamento temporale"
+                description="Analizza l’evoluzione delle attività nello stesso periodo."
+              />
               {/* Activity Selection */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
@@ -1068,7 +1043,6 @@ export default function AdminDashboard() {
 
           {selectedTab === 'obiettivi' && <AdminDailyObjectives />}
 
-          {selectedTab === 'avvisi' && <AdminNotices />}
         </div>
       </main>
     </div>
@@ -1121,6 +1095,28 @@ function SectionHeading({
           {meta}
         </span>
       )}
+    </div>
+  );
+}
+
+function SectionDivider({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="pt-3 flex items-start gap-3">
+      <div className="mt-0.5 rounded-lg bg-blue-50 p-2 text-[#003781]">
+        {icon}
+      </div>
+      <div>
+        <h2 className="text-lg font-black text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-500">{description}</p>
+      </div>
     </div>
   );
 }

@@ -21,16 +21,6 @@ export type DailyObjectives = {
   updatedAt?: unknown;
 };
 
-export type Notice = {
-  id: string;
-  title: string;
-  body: string;
-  active: boolean;
-  createdBy: string;
-  createdAt?: unknown;
-  updatedAt?: unknown;
-};
-
 export function createEmptyDailyObjectives(): DailyObjectives {
   return {
     enabled: false,

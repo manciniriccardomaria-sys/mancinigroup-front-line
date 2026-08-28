@@ -22,22 +22,17 @@ import {
   Calendar, 
   CalendarDays,
   ClipboardList,
-  Megaphone,
-  Star,
   Target,
   User as UserIcon,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
 import EmployeeCallCalendar from './EmployeeCallCalendar';
-import EmployeeCustomerClusters from './EmployeeCustomerClusters';
-import EmployeeNotices from './EmployeeNotices';
 import {
   Campaign,
   CallTask,
   isTaskActionable,
 } from '../callCenter';
-import { CUSTOMER_CLUSTER_ALLOWED_EMPLOYEE_EMAIL } from '../customerClusters';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
 
@@ -52,15 +47,13 @@ export default function EmployeeDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
-  const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'notices' | 'clusters'>('report');
+  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('report');
   const {
     categories,
     sections,
     loading: categoriesLoading,
   } = useReportCategories();
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
-  const canViewCustomerClusters =
-    auth.currentUser?.email?.trim().toLowerCase() === CUSTOMER_CLUSTER_ALLOWED_EMPLOYEE_EMAIL;
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -177,12 +170,6 @@ export default function EmployeeDashboard() {
       ...item.data(),
     } as Campaign)));
   }), []);
-
-  useEffect(() => {
-    if (!canViewCustomerClusters && selectedView === 'clusters') {
-      setSelectedView('report');
-    }
-  }, [canViewCustomerClusters, selectedView]);
 
   const calendarNotificationCount = useMemo(() => {
     const ownSourceCodes = employee?.sourceCodes || [];
@@ -301,9 +288,7 @@ export default function EmployeeDashboard() {
           </div>
         )}
 
-        <div className={`mb-4 grid grid-cols-1 ${
-          canViewCustomerClusters ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'
-        } bg-white border border-slate-200 p-1 rounded-lg w-full sm:w-fit`}>
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 bg-white border border-slate-200 p-1 rounded-lg w-full sm:w-fit">
           <button
             type="button"
             onClick={() => setSelectedView('report')}
@@ -337,37 +322,9 @@ export default function EmployeeDashboard() {
               </span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => setSelectedView('notices')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
-              selectedView === 'notices'
-                ? 'bg-[#003781] text-white'
-                : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <Megaphone size={17} />
-            Avvisi
-          </button>
-          {canViewCustomerClusters && (
-            <button
-              type="button"
-              onClick={() => setSelectedView('clusters')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
-                selectedView === 'clusters'
-                  ? 'bg-[#003781] text-white'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Star size={17} />
-              Cluster clienti
-            </button>
-          )}
         </div>
 
         {selectedView === 'calendar' && <EmployeeCallCalendar />}
-        {selectedView === 'notices' && <EmployeeNotices />}
-        {selectedView === 'clusters' && canViewCustomerClusters && <EmployeeCustomerClusters />}
 
         {selectedView === 'report' && (
           <section className="space-y-3">

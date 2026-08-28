@@ -12,8 +12,6 @@ import { AUTHORIZED_EMPLOYEES } from './constants';
 import { CLIENT_IMPORT_CONFIG } from './clientImportConfig';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 
-export const CUSTOMER_CLUSTER_ALLOWED_EMPLOYEE_EMAIL = 'rossellamancinigroup@gmail.com';
-
 export type CustomerClusterBucket = '1' | '2' | '3' | '4' | '5' | '>5';
 
 export type CustomerClusterRecord = {
