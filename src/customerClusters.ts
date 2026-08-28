@@ -10,6 +10,12 @@ import {
 import { db } from './firebase';
 import { AUTHORIZED_EMPLOYEES } from './constants';
 import { CLIENT_IMPORT_CONFIG } from './clientImportConfig';
+import {
+  CUSTOMER_CLUSTER_HEADER_COLUMNS,
+  ImportColumnMapping,
+  getExactHeaderMatchCount,
+  resolveExactHeaderColumns,
+} from './importColumnResolver';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 
 export type CustomerClusterBucket = '1' | '2' | '3' | '4' | '5' | '>5';
@@ -44,6 +50,8 @@ export type ParsedCustomerClusterImport = {
   skippedRows: number;
   duplicateRows: number;
   records: CustomerClusterRecord[];
+  columnMappings?: ImportColumnMapping[];
+  mappingWarnings?: string[];
 };
 
 export type CustomerClusterImportResult = {
@@ -59,6 +67,8 @@ export type CustomerClusterImportResult = {
 type WorksheetLike = {
   name: string;
   rowCount: number;
+  columnCount?: number;
+  actualColumnCount?: number;
   getCell(row: number, column: number): {
     value: unknown;
     text: string;
@@ -66,25 +76,17 @@ type WorksheetLike = {
 };
 
 const DATE_FORMAT = 'yyyy-MM-dd';
-const CLUSTER_COLUMNS = {
-  clientName: 'A',
-  source: 'G',
-  quietanzaDate: 'H',
-  birthDate: 'U',
-  address: 'X',
-  phone: 'AC',
-  customerTenure: 'BE',
-  customerTenureFallback: 'BF',
-  policyCount: 'BI',
-  annualPremium: 'CR',
-  agencyCommissions: 'CW',
-} as const;
+type CustomerClusterColumns = Record<
+  typeof CUSTOMER_CLUSTER_HEADER_COLUMNS[number]['field'],
+  string
+>;
 
 export async function parseCustomerClusterWorkbook(
   file: File,
 ): Promise<ParsedCustomerClusterImport> {
   const ExcelJS = await import('exceljs');
-  const workbook = new ExcelJS.Workbook();
+  const Workbook = ExcelJS.Workbook || ExcelJS.default.Workbook;
+  const workbook = new Workbook();
   const arrayBuffer = await file.arrayBuffer();
   await workbook.xlsx.load(arrayBuffer as never);
 
@@ -93,12 +95,26 @@ export async function parseCustomerClusterWorkbook(
     throw new Error('Nessun foglio leggibile trovato nel file Estrazione.');
   }
 
+  const columnResolution = resolveExactHeaderColumns(
+    worksheet,
+    CUSTOMER_CLUSTER_HEADER_COLUMNS,
+  );
+  if (columnResolution.missingRequiredHeaders.length > 0) {
+    throw new Error(
+      `Il file non corrisponde al Cluster clienti. Intestazioni mancanti: ${columnResolution.missingRequiredHeaders.join(', ')}.`
+    );
+  }
+
   const recordsById = new Map<string, CustomerClusterRecord>();
   let skippedRows = 0;
   let duplicateRows = 0;
 
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    const record = buildCustomerClusterRecord(worksheet, rowNumber);
+    const record = buildCustomerClusterRecord(
+      worksheet,
+      rowNumber,
+      columnResolution.columns,
+    );
 
     if (!record) {
       skippedRows += 1;
@@ -116,12 +132,20 @@ export async function parseCustomerClusterWorkbook(
     skippedRows,
     duplicateRows,
     records: [...recordsById.values()],
+    columnMappings: columnResolution.mappings,
+    mappingWarnings: columnResolution.warnings,
   };
 }
 
 export async function importCustomerClusters(
   parsed: ParsedCustomerClusterImport,
 ): Promise<CustomerClusterImportResult> {
+  if (parsed.rowCount > 0 && parsed.records.length === 0) {
+    throw new Error(
+      'Importazione bloccata: il file non contiene righe valide per il Cluster clienti.'
+    );
+  }
+
   const existingSnapshot = await getDocs(collection(db, 'customer_clusters'));
   const existingById = new Map(
     existingSnapshot.docs.map(item => [
@@ -221,57 +245,45 @@ function selectCustomerClusterWorksheet(
 }
 
 function getClusterWorksheetScore(worksheet: WorksheetLike): number {
-  const headerChecks: Array<[keyof typeof CLUSTER_COLUMNS, string[]]> = [
-    ['clientName', ['CONTRAENTE', 'CLIENTE']],
-    ['source', ['FONTE']],
-    ['quietanzaDate', ['SCAD', 'QUIET']],
-    ['policyCount', ['POL']],
-    ['annualPremium', ['PREMI']],
-    ['agencyCommissions', ['PRV', 'PROVV']],
-  ];
-
-  return headerChecks.reduce((score, [columnKey, expectedWords]) => {
-    const header = normalizeText(getCellText(
-      worksheet,
-      1,
-      CLUSTER_COLUMNS[columnKey],
-    ));
-    return score + (expectedWords.some(word => header.includes(word)) ? 1 : 0);
-  }, 0);
+  return getExactHeaderMatchCount(
+    worksheet,
+    CUSTOMER_CLUSTER_HEADER_COLUMNS,
+  );
 }
 
 function buildCustomerClusterRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
+  columns: CustomerClusterColumns,
 ): CustomerClusterRecord | undefined {
-  const clientName = getCellText(worksheet, rowNumber, CLUSTER_COLUMNS.clientName);
-  const source = resolveSource(getCellText(worksheet, rowNumber, CLUSTER_COLUMNS.source));
+  const clientName = getCellText(worksheet, rowNumber, columns.clientName);
+  const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
   const policyCount = Math.floor(getCellNumber(
     worksheet,
     rowNumber,
-    CLUSTER_COLUMNS.policyCount,
+    columns.policyCount,
   ));
 
   if (!clientName || !source.code || policyCount < 1) return undefined;
 
-  const quietanzaDate = getCellDate(worksheet, rowNumber, CLUSTER_COLUMNS.quietanzaDate);
-  const birthDate = getCellDate(worksheet, rowNumber, CLUSTER_COLUMNS.birthDate);
-  const phone = getCellPhone(worksheet, rowNumber, CLUSTER_COLUMNS.phone);
-  const address = getCellText(worksheet, rowNumber, CLUSTER_COLUMNS.address);
+  const quietanzaDate = getCellDate(worksheet, rowNumber, columns.quietanzaDate);
+  const birthDate = getCellDate(worksheet, rowNumber, columns.birthDate);
+  const phone = getCellPhone(worksheet, rowNumber, columns.phone);
+  const address = getCellText(worksheet, rowNumber, columns.address);
   const customerTenure = getCellNumber(
     worksheet,
     rowNumber,
-    getCustomerTenureColumn(worksheet),
+    columns.customerTenure,
   );
   const annualPremium = getCellNumber(
     worksheet,
     rowNumber,
-    CLUSTER_COLUMNS.annualPremium,
+    columns.annualPremium,
   );
   const agencyCommissions = getCellNumber(
     worksheet,
     rowNumber,
-    CLUSTER_COLUMNS.agencyCommissions,
+    columns.agencyCommissions,
   );
   const identity = [
     'customer-cluster',
@@ -304,24 +316,6 @@ function buildCustomerClusterRecord(
     ...baseRecord,
     sourceFingerprint: stableHash(JSON.stringify(baseRecord)),
   };
-}
-
-function getCustomerTenureColumn(worksheet: WorksheetLike): string {
-  const primaryHeader = normalizeText(getCellText(
-    worksheet,
-    1,
-    CLUSTER_COLUMNS.customerTenure,
-  ));
-  if (primaryHeader.includes('ANZ')) return CLUSTER_COLUMNS.customerTenure;
-
-  const fallbackHeader = normalizeText(getCellText(
-    worksheet,
-    1,
-    CLUSTER_COLUMNS.customerTenureFallback,
-  ));
-  return fallbackHeader.includes('ANZ')
-    ? CLUSTER_COLUMNS.customerTenureFallback
-    : CLUSTER_COLUMNS.customerTenure;
 }
 
 function getCellText(

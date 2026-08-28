@@ -25,6 +25,13 @@ import {
 } from './constants';
 import { CLIENT_IMPORT_CONFIG } from './clientImportConfig';
 import { CallStatusId } from './callWorkflowConfig';
+import {
+  ImportColumnMapping,
+  NEW_CLIENT_HEADER_COLUMNS,
+  WIDE_EXPIRATION_HEADER_COLUMNS,
+  describeLegacyColumns,
+  resolveExactHeaderColumns,
+} from './importColumnResolver';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 
 export type ImportKind = 'newClients' | 'expirations' | 'winback';
@@ -132,6 +139,8 @@ export type ParsedImport = {
   rowCount: number;
   skippedRows: number;
   tasks: Array<Omit<CallTask, 'status' | 'id'> & { id: string }>;
+  columnMappings?: ImportColumnMapping[];
+  mappingWarnings?: string[];
   newClients?: NewClientRecord[];
   expirationRecords?: ExpirationRecord[];
 };
@@ -149,10 +158,55 @@ export type ImportResult = {
 
 type WorksheetLike = {
   rowCount: number;
+  columnCount?: number;
+  actualColumnCount?: number;
   getCell(row: number, column: number): {
     value: unknown;
     text: string;
   };
+};
+
+type NewClientColumns = Record<
+  keyof typeof CLIENT_IMPORT_CONFIG.newClients.columns,
+  string
+>;
+type ExpirationColumns = Record<
+  keyof typeof CLIENT_IMPORT_CONFIG.expirations.columns,
+  string
+>;
+type WinbackColumns = Record<
+  keyof typeof CLIENT_IMPORT_CONFIG.winback.columns,
+  string
+>;
+type ColumnResolution<T extends Record<string, string>> = {
+  columns: T;
+  mappings: ImportColumnMapping[];
+  missingRequiredHeaders: string[];
+  mode: 'header' | 'legacy';
+  warnings: string[];
+};
+
+const EXPIRATION_COLUMN_LABELS: Record<keyof ExpirationColumns, string> = {
+  fullName: 'Nome e cognome',
+  policyNumber: 'Numero polizza',
+  source: 'Fonte',
+  policyType: 'Ramo / tipologia polizza',
+  fiscalCode: 'Codice fiscale / P.IVA',
+  expirationType: 'Tipo scadenza',
+  nextExpirationDate: 'Prossima scadenza',
+  vehiclePlate: 'Targa',
+  phone: 'Cellulare',
+  autoPremium: 'Premio auto annuale',
+};
+
+const WINBACK_COLUMN_LABELS: Record<keyof WinbackColumns, string> = {
+  fullName: 'Nome e cognome',
+  policyNumber: 'Numero polizza',
+  source: 'Fonte',
+  lastGrossPremium: 'Ultimo premio lordo',
+  exitDate: 'Data uscita',
+  vehiclePlate: 'Targa',
+  phone: 'Cellulare',
 };
 
 const DATE_FORMAT = 'yyyy-MM-dd';
@@ -164,7 +218,8 @@ export async function parseClientWorkbook(
   campaigns: Campaign[],
 ): Promise<ParsedImport> {
   const ExcelJS = await import('exceljs');
-  const workbook = new ExcelJS.Workbook();
+  const Workbook = ExcelJS.Workbook || ExcelJS.default.Workbook;
+  const workbook = new Workbook();
   const arrayBuffer = await file.arrayBuffer();
   await workbook.xlsx.load(arrayBuffer as never);
 
@@ -175,6 +230,26 @@ export async function parseClientWorkbook(
   if (!worksheet) {
     throw new Error('Nessun foglio leggibile trovato nel file.');
   }
+
+  const newClientResolution = kind === 'newClients'
+    ? resolveExactHeaderColumns(
+        worksheet as WorksheetLike,
+        NEW_CLIENT_HEADER_COLUMNS,
+      )
+    : undefined;
+  if (newClientResolution?.missingRequiredHeaders.length) {
+    throw new Error(
+      `Il file non corrisponde a Nuovi clienti. Intestazioni mancanti: ${newClientResolution.missingRequiredHeaders.join(', ')}.`
+    );
+  }
+
+  const expirationResolution = kind === 'expirations'
+    ? getExpirationColumnResolution(worksheet as WorksheetLike)
+    : undefined;
+  const winbackResolution = kind === 'winback'
+    ? getWinbackColumnResolution(worksheet as WorksheetLike)
+    : undefined;
+  const columnResolution = newClientResolution || expirationResolution || winbackResolution;
 
   const tasks: ParsedImport['tasks'] = [];
   const newClients: NewClientRecord[] = [];
@@ -189,6 +264,7 @@ export async function parseClientWorkbook(
       const client = buildNewClientRecord(
         worksheet as WorksheetLike,
         rowNumber,
+        newClientResolution!.columns,
       );
 
       if (!client) {
@@ -205,6 +281,7 @@ export async function parseClientWorkbook(
       const expirationRecord = buildAnnualExpirationRecord(
         worksheet as WorksheetLike,
         rowNumber,
+        expirationResolution!.columns,
       );
 
       if (!expirationRecord) {
@@ -223,7 +300,7 @@ export async function parseClientWorkbook(
     const generated = buildTasksForRow(
       worksheet as WorksheetLike,
       rowNumber,
-      kind,
+      winbackResolution!.columns,
     );
 
     if (generated.length === 0) {
@@ -241,12 +318,25 @@ export async function parseClientWorkbook(
     rowCount: Math.max(0, worksheet.rowCount - 1),
     skippedRows,
     tasks,
+    columnMappings: columnResolution?.mappings,
+    mappingWarnings: columnResolution?.warnings,
     ...(kind === 'newClients' ? { newClients } : {}),
     ...(kind === 'expirations' ? { expirationRecords } : {}),
   };
 }
 
 export async function importCallTasks(parsed: ParsedImport): Promise<ImportResult> {
+  const validRecordCount = parsed.kind === 'newClients'
+    ? parsed.newClients?.length || 0
+    : parsed.kind === 'expirations'
+      ? parsed.expirationRecords?.length || 0
+      : parsed.tasks.length;
+  if (parsed.rowCount > 0 && validRecordCount === 0) {
+    throw new Error(
+      'Importazione bloccata: il file non contiene righe valide per il tipo selezionato.'
+    );
+  }
+
   const storedClients = parsed.newClients
     ? await importNewClientRecords(parsed.newClients)
     : 0;
@@ -662,17 +752,17 @@ export function isTaskActionable(
 function buildTasksForRow(
   worksheet: WorksheetLike,
   rowNumber: number,
-  kind: ImportKind,
+  columns: WinbackColumns,
 ): ParsedImport['tasks'] {
-  const task = buildWinbackTask(worksheet, rowNumber);
+  const task = buildWinbackTask(worksheet, rowNumber, columns);
   return task ? [task] : [];
 }
 
 function buildNewClientRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
+  columns: NewClientColumns,
 ): NewClientRecord | undefined {
-  const columns = CLIENT_IMPORT_CONFIG.newClients.columns;
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
   const startDate = getCellDate(worksheet, rowNumber, columns.relationshipStartDate);
@@ -750,42 +840,54 @@ function buildCampaignTasksForClient(
   }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
 }
 
-function getExpirationColumns(
+function getExpirationColumnResolution(
   worksheet: WorksheetLike,
-): Record<keyof typeof CLIENT_IMPORT_CONFIG.expirations.columns, string> {
-  const defaultColumns = CLIENT_IMPORT_CONFIG.expirations.columns;
-  const headerFullName = normalizeText(getCellText(worksheet, 1, 'A'));
-  const headerSource = normalizeText(getCellText(worksheet, 1, 'G'));
-  const headerNextExpiration = normalizeText(getCellText(worksheet, 1, 'AH'));
+): ColumnResolution<ExpirationColumns> {
+  const exactResolution = resolveExactHeaderColumns(
+    worksheet,
+    WIDE_EXPIRATION_HEADER_COLUMNS,
+  );
 
-  if (
-    headerFullName.includes('CONTRAENTE') &&
-    headerSource.includes('FONTE') &&
-    headerNextExpiration.includes('PROX SCAD')
-  ) {
+  if (exactResolution.missingRequiredHeaders.length === 0) {
     return {
-      ...defaultColumns,
-      fullName: 'A',
-      policyNumber: '',
-      source: 'G',
-      policyType: '',
-      fiscalCode: 'N',
-      expirationType: '',
-      nextExpirationDate: 'AH',
-      vehiclePlate: '',
-      phone: 'Z',
-      autoPremium: 'CP',
+      ...exactResolution,
+      columns: {
+        fullName: exactResolution.columns.fullName,
+        policyNumber: '',
+        source: exactResolution.columns.source,
+        policyType: '',
+        fiscalCode: exactResolution.columns.fiscalCode,
+        expirationType: '',
+        nextExpirationDate: exactResolution.columns.nextExpirationDate,
+        vehiclePlate: '',
+        phone: exactResolution.columns.phone,
+        autoPremium: exactResolution.columns.autoPremium,
+      },
     };
   }
 
-  return defaultColumns;
+  return describeLegacyColumns(
+    worksheet,
+    { ...CLIENT_IMPORT_CONFIG.expirations.columns } as ExpirationColumns,
+    EXPIRATION_COLUMN_LABELS,
+  );
+}
+
+function getWinbackColumnResolution(
+  worksheet: WorksheetLike,
+): ColumnResolution<WinbackColumns> {
+  return describeLegacyColumns(
+    worksheet,
+    { ...CLIENT_IMPORT_CONFIG.winback.columns } as WinbackColumns,
+    WINBACK_COLUMN_LABELS,
+  );
 }
 
 function buildAnnualExpirationRecord(
   worksheet: WorksheetLike,
   rowNumber: number,
+  columns: ExpirationColumns,
 ): ExpirationRecord | undefined {
-  const columns = getExpirationColumns(worksheet);
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
   const policyNumber = getOptionalCellText(worksheet, rowNumber, columns.policyNumber);
   const fiscalCode = getOptionalCellText(worksheet, rowNumber, columns.fiscalCode);
@@ -962,9 +1064,9 @@ function annualExpirationRecordFromTask(
 function buildWinbackTask(
   worksheet: WorksheetLike,
   rowNumber: number,
+  columns: WinbackColumns,
 ): ParsedImport['tasks'][number] | undefined {
   const config = CLIENT_IMPORT_CONFIG.winback;
-  const columns = config.columns;
   const clientName = getCellText(worksheet, rowNumber, columns.fullName);
   const policyNumber = getCellText(worksheet, rowNumber, columns.policyNumber);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));

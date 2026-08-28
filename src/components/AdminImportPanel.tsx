@@ -9,13 +9,13 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import {
+  AlertTriangle,
   CalendarPlus,
   CheckCircle2,
   FileSpreadsheet,
   Loader2,
   Pencil,
   Plus,
-  Star,
   Trash2,
   Upload,
   X,
@@ -25,6 +25,7 @@ import {
   Campaign,
   CampaignKind,
   ImportKind,
+  ParsedImport,
   getCampaignKind,
   importCallTasks,
   parseClientWorkbook,
@@ -32,9 +33,11 @@ import {
 } from '../callCenter';
 import { CLIENT_IMPORT_CONFIG } from '../clientImportConfig';
 import {
+  ParsedCustomerClusterImport,
   importCustomerClusters,
   parseCustomerClusterWorkbook,
 } from '../customerClusters';
+import { ImportColumnMapping } from '../importColumnResolver';
 
 type CampaignDraft = {
   id?: string;
@@ -57,8 +60,14 @@ const EMPTY_CAMPAIGN: CampaignDraft = {
   active: true,
 };
 
-const IMPORT_CARDS: Array<{
-  kind: ImportKind;
+type UploadKind = ImportKind | 'customerClusters';
+
+type ImportAnalysis =
+  | { kind: ImportKind; parsed: ParsedImport[] }
+  | { kind: 'customerClusters'; parsed: ParsedCustomerClusterImport };
+
+const IMPORT_OPTIONS: Array<{
+  kind: UploadKind;
   title: string;
   description: string;
 }> = [
@@ -77,9 +86,12 @@ const IMPORT_CARDS: Array<{
     title: 'Winback',
     description: 'Importa uno o più mesi e calcola il richiamo 10 giorni prima dell’anniversario.',
   },
+  {
+    kind: 'customerClusters',
+    title: 'Cluster clienti',
+    description: 'Aggiorna clienti, stelle, premi e provvigioni dall’export Estrazione.',
+  },
 ];
-
-const VISIBLE_IMPORT_CARDS = IMPORT_CARDS;
 
 export default function AdminImportPanel() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -87,12 +99,13 @@ export default function AdminImportPanel() {
   const [savingCampaign, setSavingCampaign] = useState(false);
   const [campaignError, setCampaignError] = useState('');
   const [campaignMessage, setCampaignMessage] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<Partial<Record<ImportKind, File[]>>>({});
-  const [selectedClusterFile, setSelectedClusterFile] = useState<File | null>(null);
-  const [importingKind, setImportingKind] = useState<ImportKind | null>(null);
-  const [importingClusters, setImportingClusters] = useState(false);
-  const [importMessages, setImportMessages] = useState<Partial<Record<ImportKind, string>>>({});
-  const [clusterImportMessage, setClusterImportMessage] = useState('');
+  const [selectedImportKind, setSelectedImportKind] = useState<UploadKind | ''>('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [analyzingImport, setAnalyzingImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importAnalysis, setImportAnalysis] = useState<ImportAnalysis | null>(null);
+  const [importError, setImportError] = useState('');
+  const [importMessage, setImportMessage] = useState('');
 
   useEffect(() => {
     return onSnapshot(collection(db, 'campaigns'), snapshot => {
@@ -228,91 +241,98 @@ export default function AdminImportPanel() {
     if (campaignDraft.id === campaign.id) setCampaignDraft(EMPTY_CAMPAIGN);
   };
 
-  const runImport = async (kind: ImportKind) => {
-    const files = selectedFiles[kind] || [];
-    if (files.length === 0) return;
+  const analyzeImport = async () => {
+    if (!selectedImportKind || selectedFiles.length === 0) return;
 
-    setImportingKind(kind);
-    setImportMessages(previous => ({ ...previous, [kind]: '' }));
+    setAnalyzingImport(true);
+    setImportAnalysis(null);
+    setImportError('');
+    setImportMessage('');
 
     try {
-      const totals = {
-        created: 0,
-        updated: 0,
-        unchanged: 0,
-        skippedRows: 0,
-        storedClients: 0,
-        storedExpirations: 0,
-      };
-      const fileSummaries: string[] = [];
-
-      for (const file of files) {
-        const parsed = await parseClientWorkbook(file, kind, campaigns);
-        const result = await importCallTasks(parsed);
-        totals.created += result.created;
-        totals.updated += result.updated;
-        totals.unchanged += result.unchanged;
-        totals.skippedRows += result.skippedRows;
-        totals.storedClients += result.storedClients;
-        totals.storedExpirations += result.storedExpirations;
-        fileSummaries.push(`${file.name}: ${result.created} nuove, ${result.updated} aggiornate, ${result.unchanged} invariate`);
+      if (selectedImportKind === 'customerClusters') {
+        const parsed = await parseCustomerClusterWorkbook(selectedFiles[0]);
+        setImportAnalysis({ kind: 'customerClusters', parsed });
+        return;
       }
 
-      setImportMessages(previous => ({
-        ...previous,
-        [kind]: [
-          `${totals.created} nuove`,
-          `${totals.updated} aggiornate`,
-          `${totals.unchanged} invariate`,
-          ...(kind === 'newClients'
-            ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
-            : []),
-          ...(kind === 'expirations'
-            ? [`${totals.storedExpirations} scadenze clienti memorizzate o aggiornate`]
-            : []),
-          `${totals.skippedRows} righe saltate`,
-          ...(files.length > 1 ? [`File: ${fileSummaries.join(' · ')}`] : []),
-        ].join(' · '),
-      }));
+      const parsed = await Promise.all(
+        selectedFiles.map(file =>
+          parseClientWorkbook(file, selectedImportKind, campaigns)
+        )
+      );
+      setImportAnalysis({ kind: selectedImportKind, parsed });
     } catch (error) {
-      console.error('Import error:', error);
-      setImportMessages(previous => ({
-        ...previous,
-        [kind]: error instanceof Error
-          ? error.message
-          : 'Importazione non riuscita.',
-      }));
+      console.error('Import analysis error:', error);
+      setImportError(error instanceof Error
+        ? error.message
+        : 'Non è stato possibile analizzare il file.');
     } finally {
-      setImportingKind(null);
+      setAnalyzingImport(false);
     }
   };
 
-  const runClusterImport = async () => {
-    if (!selectedClusterFile) return;
+  const confirmImport = async () => {
+    if (!importAnalysis || hasInvalidAnalysis(importAnalysis)) return;
 
-    setImportingClusters(true);
-    setClusterImportMessage('');
+    setImporting(true);
+    setImportError('');
+    setImportMessage('');
 
     try {
-      const parsed = await parseCustomerClusterWorkbook(selectedClusterFile);
-      const result = await importCustomerClusters(parsed);
+      if (importAnalysis.kind === 'customerClusters') {
+        const result = await importCustomerClusters(importAnalysis.parsed);
+        setImportMessage([
+          `${result.importedRecords} clienti letti`,
+          `${result.created} nuovi`,
+          `${result.updated} aggiornati`,
+          `${result.unchanged} invariati`,
+          `${result.duplicateRows} duplicati interni ignorati`,
+          `${result.skippedRows} righe saltate`,
+        ].join(' · '));
+      } else {
+        const totals = {
+          created: 0,
+          updated: 0,
+          unchanged: 0,
+          skippedRows: 0,
+          storedClients: 0,
+          storedExpirations: 0,
+        };
 
-      setClusterImportMessage([
-        `${result.importedRecords} clienti letti`,
-        `${result.created} nuovi`,
-        `${result.updated} aggiornati`,
-        `${result.unchanged} invariati`,
-        `${result.duplicateRows} duplicati interni ignorati`,
-        `${result.skippedRows} righe saltate`,
-        `Scheda: ${parsed.sheetName}`,
-      ].join(' · '));
+        for (const parsed of importAnalysis.parsed) {
+          const result = await importCallTasks(parsed);
+          totals.created += result.created;
+          totals.updated += result.updated;
+          totals.unchanged += result.unchanged;
+          totals.skippedRows += result.skippedRows;
+          totals.storedClients += result.storedClients;
+          totals.storedExpirations += result.storedExpirations;
+        }
+
+        setImportMessage([
+          `${totals.created} nuove`,
+          `${totals.updated} aggiornate`,
+          `${totals.unchanged} invariate`,
+          ...(importAnalysis.kind === 'newClients'
+            ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
+            : []),
+          ...(importAnalysis.kind === 'expirations'
+            ? [`${totals.storedExpirations} scadenze memorizzate o aggiornate`]
+            : []),
+          `${totals.skippedRows} righe saltate`,
+        ].join(' · '));
+      }
+
+      setImportAnalysis(null);
+      setSelectedFiles([]);
     } catch (error) {
-      console.error('Customer cluster import error:', error);
-      setClusterImportMessage(error instanceof Error
+      console.error('Import error:', error);
+      setImportError(error instanceof Error
         ? error.message
-        : 'Importazione cluster clienti non riuscita.');
+        : 'Importazione non riuscita.');
     } finally {
-      setImportingClusters(false);
+      setImporting(false);
     }
   };
 
@@ -543,140 +563,233 @@ export default function AdminImportPanel() {
         </div>
       </section>
 
-      <section>
-        <div className="mb-4">
-          <h3 className="font-bold text-slate-800">Importazione Excel</h3>
-          <p className="text-sm text-slate-500">
-            I nuovi clienti restano memorizzati: le campagne create in seguito
-            generano automaticamente le relative chiamate. Il Winback accetta
-            più file mensili e li mantiene cumulativi. Il tipo di import viene
-            deciso dalla finestra in cui carichi il file.
-          </p>
+      <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="p-5 border-b border-slate-200 flex items-center gap-3">
+          <div className="p-2 bg-blue-50 text-[#003781] rounded-lg">
+            <FileSpreadsheet size={22} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800">Carica estrazione</h3>
+            <p className="text-sm text-slate-500">
+              Seleziona il tipo, controlla le colonne riconosciute e conferma solo dopo l’anteprima.
+            </p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-          {VISIBLE_IMPORT_CARDS.map(card => {
-            const files = selectedFiles[card.kind] || [];
-            const isImporting = importingKind === card.kind;
-            const allowsMultipleFiles = card.kind === 'winback';
+        <div className="p-5 grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-6">
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-sm font-bold text-slate-700">Tipo di caricamento</span>
+              <select
+                value={selectedImportKind}
+                onChange={event => {
+                  setSelectedImportKind(event.target.value as UploadKind | '');
+                  setSelectedFiles([]);
+                  setImportAnalysis(null);
+                  setImportError('');
+                  setImportMessage('');
+                }}
+                className="mt-2 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-[#003781]"
+              >
+                <option value="">Seleziona il tipo…</option>
+                {IMPORT_OPTIONS.map(option => (
+                  <option key={option.kind} value={option.kind}>{option.title}</option>
+                ))}
+              </select>
+            </label>
 
-            return (
-              <div key={card.kind} className="bg-white border border-slate-200 rounded-lg p-5">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-blue-50 text-[#003781] rounded-lg">
-                    <FileSpreadsheet size={22} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800">{card.title}</h4>
-                    <p className="text-xs text-slate-500 mt-1">{card.description}</p>
-                  </div>
+            {selectedImportKind && (
+              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                {IMPORT_OPTIONS.find(option => option.kind === selectedImportKind)?.description}
+              </p>
+            )}
+
+            <label className={`flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-5 text-sm font-semibold text-slate-600 ${
+              selectedImportKind
+                ? 'cursor-pointer hover:bg-slate-50'
+                : 'opacity-50 cursor-not-allowed'
+            }`}>
+              <Upload size={18} />
+              {selectedFiles.length > 0
+                ? selectedFiles.length > 1
+                  ? `${selectedFiles.length} file selezionati`
+                  : selectedFiles[0].name
+                : selectedImportKind === 'winback'
+                  ? 'Seleziona uno o più file'
+                  : 'Seleziona file Excel'}
+              <input
+                key={selectedImportKind}
+                type="file"
+                accept=".xlsx"
+                multiple={selectedImportKind === 'winback'}
+                disabled={!selectedImportKind}
+                className="hidden"
+                onChange={event => {
+                  const files = Array.from(event.target.files || []);
+                  if (files.length === 0) return;
+                  setSelectedFiles(selectedImportKind === 'winback' ? files : files.slice(0, 1));
+                  setImportAnalysis(null);
+                  setImportError('');
+                  setImportMessage('');
+                }}
+              />
+            </label>
+
+            {selectedFiles.length > 0 && (
+              <div className="text-xs text-slate-500 space-y-1 max-h-28 overflow-y-auto">
+                {selectedFiles.map(file => (
+                  <p key={`${file.name}-${file.lastModified}`} className="truncate">{file.name}</p>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={analyzeImport}
+              disabled={!selectedImportKind || selectedFiles.length === 0 || analyzingImport || importing}
+              className="w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+            >
+              {analyzingImport
+                ? <Loader2 className="animate-spin" size={17} />
+                : <FileSpreadsheet size={17} />}
+              {analyzingImport ? 'Analisi in corso…' : 'Analizza file'}
+            </button>
+
+            {importError && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg flex gap-2">
+                <AlertTriangle size={17} className="shrink-0 mt-0.5" />
+                <span>{importError}</span>
+              </div>
+            )}
+            {importMessage && (
+              <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg flex gap-2">
+                <CheckCircle2 size={17} className="shrink-0 mt-0.5" />
+                <span>{importMessage}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            {!importAnalysis && (
+              <div className="h-full min-h-56 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-center p-8">
+                <div>
+                  <FileSpreadsheet size={34} className="mx-auto text-slate-300" />
+                  <p className="mt-3 text-sm font-bold text-slate-600">Nessun file ancora analizzato</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    L’analisi non modifica i dati e mostra intestazioni, righe valide e anomalie.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {importAnalysis && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-3">
+                  <ImportMetric label="Righe lette" value={getAnalysisRowCount(importAnalysis)} />
+                  <ImportMetric label="Righe valide" value={getAnalysisValidCount(importAnalysis)} />
+                  <ImportMetric label="Righe saltate" value={getAnalysisSkippedCount(importAnalysis)} />
                 </div>
 
-                <div className="mt-5 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
-                  Carica qui l’export Excel: nome file e nome scheda non vengono usati
-                  per riconoscere il tipo di import.
-                </div>
+                {getAnalysisEntries(importAnalysis).map(entry => (
+                  <div key={`${entry.fileName}-${entry.sheetName}`} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{entry.fileName}</p>
+                        <p className="text-xs text-slate-500">Foglio: {entry.sheetName}</p>
+                      </div>
+                      <span className={`self-start text-xs font-bold px-2 py-1 rounded ${
+                        entry.validCount > 0
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-red-50 text-red-700'
+                      }`}>
+                        {entry.validCount} righe valide
+                      </span>
+                    </div>
 
-                <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">
-                  <Upload size={18} />
-                  {files.length > 0
-                    ? allowsMultipleFiles
-                      ? `${files.length} file selezionati`
-                      : files[0].name
-                    : allowsMultipleFiles
-                      ? 'Seleziona uno o più file'
-                      : 'Seleziona file'}
-                  <input
-                    type="file"
-                    accept=".xlsx"
-                    multiple={allowsMultipleFiles}
-                    className="hidden"
-                    onChange={event => {
-                      const selected = Array.from(event.target.files || []);
-                      if (selected.length === 0) return;
-                      setSelectedFiles(previous => ({ ...previous, [card.kind]: selected }));
-                      setImportMessages(previous => ({ ...previous, [card.kind]: '' }));
-                    }}
-                  />
-                </label>
-
-                {allowsMultipleFiles && files.length > 0 && (
-                  <div className="mt-2 text-xs text-slate-500 space-y-1 max-h-24 overflow-y-auto">
-                    {files.map(file => (
-                      <p key={`${file.name}-${file.lastModified}`} className="truncate">
-                        {file.name}
-                      </p>
+                    {entry.warnings.map(warning => (
+                      <div key={warning} className="mx-4 mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
+                        <AlertTriangle size={15} className="shrink-0" />
+                        <span>{warning}</span>
+                      </div>
                     ))}
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-left text-slate-500 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2 font-bold">Dato</th>
+                            <th className="px-4 py-2 font-bold">Intestazione letta</th>
+                            <th className="px-4 py-2 font-bold">Colonna</th>
+                            <th className="px-4 py-2 font-bold">Metodo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {entry.columnMappings.map(mapping => (
+                            <tr key={mapping.field} className="border-b border-slate-100 last:border-0">
+                              <td className="px-4 py-2 font-semibold text-slate-700">{mapping.label}</td>
+                              <td className="px-4 py-2 text-slate-600">
+                                {mapping.detectedHeader || mapping.expectedHeader || '—'}
+                              </td>
+                              <td className="px-4 py-2 font-mono text-slate-700">{mapping.column || '—'}</td>
+                              <td className="px-4 py-2 text-slate-500">
+                                {mapping.method === 'header' ? 'Intestazione' : 'Posizione storica'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+
+                {getAnalysisPreviewRows(importAnalysis).length > 0 && (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                      <p className="text-sm font-bold text-slate-800">Anteprima dati</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-left text-slate-500 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2 font-bold">Cliente</th>
+                            <th className="px-4 py-2 font-bold">Fonte</th>
+                            <th className="px-4 py-2 font-bold">Data</th>
+                            <th className="px-4 py-2 font-bold">Cellulare</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getAnalysisPreviewRows(importAnalysis).map((row, index) => (
+                            <tr key={`${row.clientName}-${index}`} className="border-b border-slate-100 last:border-0">
+                              <td className="px-4 py-2 font-semibold text-slate-700">{row.clientName || '—'}</td>
+                              <td className="px-4 py-2 text-slate-600">{row.source || '—'}</td>
+                              <td className="px-4 py-2 text-slate-600">{formatDateForDisplay(row.date) || '—'}</td>
+                              <td className="px-4 py-2 text-slate-600">{row.phone || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {hasInvalidAnalysis(importAnalysis) && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg flex gap-2">
+                    <AlertTriangle size={17} className="shrink-0" />
+                    <span>Importazione bloccata: almeno un file non contiene righe valide per il tipo selezionato.</span>
                   </div>
                 )}
 
                 <button
                   type="button"
-                  onClick={() => runImport(card.kind)}
-                  disabled={files.length === 0 || isImporting || importingKind !== null || importingClusters}
-                  className="mt-3 w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                  onClick={confirmImport}
+                  disabled={importing || hasInvalidAnalysis(importAnalysis)}
+                  className="w-full bg-emerald-600 text-white rounded-lg py-3 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
                 >
-                  {isImporting ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
-                  {isImporting ? 'Importazione...' : 'Importa'}
+                  {importing
+                    ? <Loader2 className="animate-spin" size={17} />
+                    : <CheckCircle2 size={17} />}
+                  {importing ? 'Importazione in corso…' : 'Conferma e importa'}
                 </button>
-
-                {importMessages[card.kind] && (
-                  <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-lg flex gap-2">
-                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                    <span>{importMessages[card.kind]}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          <div className="bg-white border border-slate-200 rounded-lg p-5">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-                <Star size={22} />
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-800">Cluster clienti</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Importa Estrazione e aggiorna clienti, stelle, premi e provvigioni.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
-              Carica qui l’export Estrazione. Nome file e nome scheda non sono vincolanti.
-            </div>
-
-            <label className="mt-5 flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-lg px-3 py-4 text-sm font-semibold text-slate-600 cursor-pointer hover:bg-slate-50">
-              <Upload size={18} />
-              {selectedClusterFile ? selectedClusterFile.name : 'Seleziona file'}
-              <input
-                type="file"
-                accept=".xlsx"
-                className="hidden"
-                onChange={event => {
-                  const file = event.target.files?.[0] || null;
-                  if (!file) return;
-                  setSelectedClusterFile(file);
-                  setClusterImportMessage('');
-                }}
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={runClusterImport}
-              disabled={!selectedClusterFile || importingClusters || importingKind !== null}
-              className="mt-3 w-full bg-[#003781] text-white rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-            >
-              {importingClusters ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
-              {importingClusters ? 'Importazione...' : 'Importa'}
-            </button>
-
-            {clusterImportMessage && (
-              <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-lg flex gap-2">
-                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                <span>{clusterImportMessage}</span>
               </div>
             )}
           </div>
@@ -684,6 +797,119 @@ export default function AdminImportPanel() {
       </section>
     </div>
   );
+}
+
+type AnalysisEntry = {
+  fileName: string;
+  sheetName: string;
+  validCount: number;
+  columnMappings: ImportColumnMapping[];
+  warnings: string[];
+};
+
+type AnalysisPreviewRow = {
+  clientName: string;
+  source: string;
+  date: string;
+  phone: string;
+};
+
+function ImportMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 text-xl font-bold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function getAnalysisEntries(analysis: ImportAnalysis): AnalysisEntry[] {
+  if (analysis.kind === 'customerClusters') {
+    return [{
+      fileName: analysis.parsed.fileName,
+      sheetName: analysis.parsed.sheetName,
+      validCount: analysis.parsed.records.length,
+      columnMappings: analysis.parsed.columnMappings || [],
+      warnings: analysis.parsed.mappingWarnings || [],
+    }];
+  }
+
+  return analysis.parsed.map(parsed => ({
+    fileName: parsed.fileName,
+    sheetName: parsed.sheetName,
+    validCount: getParsedValidCount(parsed),
+    columnMappings: parsed.columnMappings || [],
+    warnings: parsed.mappingWarnings || [],
+  }));
+}
+
+function getAnalysisRowCount(analysis: ImportAnalysis): number {
+  return analysis.kind === 'customerClusters'
+    ? analysis.parsed.rowCount
+    : analysis.parsed.reduce((total, parsed) => total + parsed.rowCount, 0);
+}
+
+function getAnalysisValidCount(analysis: ImportAnalysis): number {
+  return analysis.kind === 'customerClusters'
+    ? analysis.parsed.records.length
+    : analysis.parsed.reduce(
+        (total, parsed) => total + getParsedValidCount(parsed),
+        0,
+      );
+}
+
+function getAnalysisSkippedCount(analysis: ImportAnalysis): number {
+  return analysis.kind === 'customerClusters'
+    ? analysis.parsed.skippedRows
+    : analysis.parsed.reduce((total, parsed) => total + parsed.skippedRows, 0);
+}
+
+function hasInvalidAnalysis(analysis: ImportAnalysis): boolean {
+  return getAnalysisEntries(analysis).some(entry => entry.validCount === 0);
+}
+
+function getParsedValidCount(parsed: ParsedImport): number {
+  if (parsed.kind === 'newClients') return parsed.newClients?.length || 0;
+  if (parsed.kind === 'expirations') return parsed.expirationRecords?.length || 0;
+  return parsed.tasks.length;
+}
+
+function getAnalysisPreviewRows(analysis: ImportAnalysis): AnalysisPreviewRow[] {
+  if (analysis.kind === 'customerClusters') {
+    return analysis.parsed.records.slice(0, 5).map(record => ({
+      clientName: record.clientName,
+      source: record.sourceName,
+      date: record.quietanzaDate,
+      phone: record.phone,
+    }));
+  }
+
+  return analysis.parsed.flatMap(parsed => {
+    if (parsed.kind === 'newClients') {
+      return (parsed.newClients || []).slice(0, 5).map(record => ({
+        clientName: record.clientName,
+        source: record.sourceName,
+        date: record.relationshipStartDate,
+        phone: record.phone,
+      }));
+    }
+
+    if (parsed.kind === 'expirations') {
+      return (parsed.expirationRecords || []).slice(0, 5).map(record => ({
+        clientName: record.clientName,
+        source: record.sourceName,
+        date: record.eventDate,
+        phone: record.phone,
+      }));
+    }
+
+    return parsed.tasks.slice(0, 5).map(task => ({
+      clientName: task.clientName,
+      source: task.sourceName,
+      date: task.exitDate || task.eventDate,
+      phone: task.phone,
+    }));
+  }).slice(0, 5);
 }
 
 function formatDateForDisplay(value: string): string {

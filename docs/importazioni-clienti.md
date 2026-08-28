@@ -1,7 +1,58 @@
 # Configurazione importazioni clienti
 
-I file Excel devono essere inseriti nella cartella locale `importazioni-private/`,
-che e' esclusa da Git e non viene pubblicata su GitHub Pages.
+Gli eventuali file campione conservati nel progetto devono essere inseriti in
+`importazioni-private/`, cartella esclusa da Git e non pubblicata su GitHub Pages.
+
+## Flusso nel gestionale
+
+L'amministratore seleziona sempre il tipo di caricamento dal menu, carica il
+file e avvia prima l'analisi. L'analisi non scrive dati e mostra:
+
+- foglio letto e numero di righe valide o saltate;
+- intestazione effettivamente trovata e relativa colonna;
+- metodo di riconoscimento usato;
+- anteprima dei primi clienti.
+
+La scrittura in Firestore parte solo con `Conferma e importa`. Se nessun record
+e' valido, l'importazione e' bloccata.
+
+## Intestazioni confermate
+
+Per `Nuovi clienti` e `Cluster clienti` le colonne vengono individuate cercando
+le intestazioni reali, non tramite una lettera fissa. Il confronto ignora solo
+maiuscole/minuscole, spazi superflui e caratteri Unicode equivalenti; non usa
+sinonimi inventati.
+
+### Nuovi clienti
+
+| Dato | Intestazione esatta |
+| --- | --- |
+| Nome e cognome | `Contraente` |
+| Fonte | `Fonte` |
+| Data inizio rapporto | `Iniz. Rapp.` |
+| Data di nascita | `Nascita` |
+| Cellulare | `Cellulare` |
+| Coperture cliente | `Cop. Cl` |
+
+Sono verificate due disposizioni dello stesso export: `R/Z/BC` e `U/AC/BF`
+per nascita, cellulare e coperture. Entrambe vengono risolte dalle intestazioni.
+
+### Cluster clienti
+
+Le intestazioni confermate sono `Contraente`, `Fonte`,
+`Dt. Prox Scad Quiet`, `Nascita`, `Indirizzo`, `Cellulare`, `Anz. Cl`,
+`N. Pol. Tot. Cl`, `Premi Annui Cl` e `Prv Tot. Cl`.
+
+### Scadenze e Winback
+
+L'export clienti esteso usato per alcune scadenze viene riconosciuto tramite le
+intestazioni confermate `Contraente`, `Fonte`, `Cod.Fiscale / P.IVA`,
+`Dt. Prox Scad Cl`, `Cellulare` e `Pr. Ann. Auto Cl`.
+
+Gli altri formati Scadenze e Winback continuano temporaneamente a usare le
+posizioni storiche indicate sotto. Nell'anteprima il gestionale mostra sempre
+l'intestazione realmente presente in ciascuna posizione. Le posizioni saranno
+sostituite da intestazioni esatte quando saranno disponibili i due file campione.
 
 ## Regola comune per il weekend
 
@@ -41,19 +92,16 @@ Scheda: `Scadenze`
 | Numero polizza | D |
 | Fonte | E |
 | Ramo/tipologia polizza | H |
+| Codice fiscale / P.IVA | N |
 | Tipo scadenza | K |
-| Data base | N |
+| Prossima scadenza | AH |
 | Targa | U |
-| Cellulare | AW |
+| Cellulare | Z |
+| Premio auto annuale | CP |
 
-Non sono disponibili codice cliente, email, premio lordo e stato polizza.
-
-La scadenza viene calcolata dalla data in colonna `N`:
-
-- se `K = R`, aggiungere 6 mesi;
-- se `K = A`, aggiungere 12 mesi.
-
-La chiamata viene programmata 10 giorni prima della scadenza calcolata.
+Non sono disponibili codice cliente, email, premio lordo e stato polizza. Le
+campagne annuali usano la prossima scadenza letta in `AH` e sottraggono il
+numero di giorni configurato nella campagna.
 
 ## 03_Winback_Clienti.xlsx
 
