@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   Activity,
   BarChart3,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Download,
   PhoneCall,
@@ -37,7 +38,16 @@ import CallCategoryFilter, {
 } from './CallCategoryFilter';
 
 const PAGE_SIZE = 100;
-type OperationalView = 'today' | 'next7' | 'active' | 'worked' | 'history';
+const WINBACK_PERFORMANCE_ID = '__winback__';
+type OperationalView =
+  | 'today'
+  | 'overdue'
+  | 'next7'
+  | 'active'
+  | 'worked'
+  | 'workedPossible'
+  | 'possible'
+  | 'history';
 type WorkPeriod = 'all' | 'today' | 'week' | 'month' | 'custom';
 type DateRange = {
   start: string;
@@ -86,7 +96,9 @@ export default function AdminCallCenter() {
   const [workPeriod, setWorkPeriod] = useState<WorkPeriod>('all');
   const [workStartDate, setWorkStartDate] = useState('');
   const [workEndDate, setWorkEndDate] = useState('');
+  const [showCampaignPerformances, setShowCampaignPerformances] = useState(false);
   const [page, setPage] = useState(1);
+  const callsListRef = useRef<HTMLElement | null>(null);
   const today = getItalyDate();
   const nextSevenDays = format(addDays(parseISO(today), 7), 'yyyy-MM-dd');
   const workPeriodRange = useMemo(() => getWorkPeriodRange(
@@ -197,6 +209,7 @@ export default function AdminCallCenter() {
         ].some(value => value?.toLowerCase().includes(normalizedSearch));
         const matchesOperationalView = {
           today: isTaskActionable(task, today),
+          overdue: isTaskActionable(task, today) && effectiveDate < today,
           next7: !isTaskClosed(task.status) &&
             isTaskCampaignWindowOpen(task, today) &&
             !isTaskExpired(task, today) &&
@@ -209,6 +222,8 @@ export default function AdminCallCenter() {
             !isTaskBeforeTrackingStart(task),
           worked: isTaskWorked(task) &&
             isDateInRange(getTaskWorkedDate(task), workPeriodRange.start, workPeriodRange.end),
+          workedPossible: isTaskPossibleUntilToday(task, today) && isTaskWorked(task),
+          possible: isTaskPossibleUntilToday(task, today),
           history: isTaskClosed(task.status) ||
             isTaskExpired(task, today) ||
             isTaskBeforeTrackingStart(task),
@@ -305,57 +320,36 @@ export default function AdminCallCenter() {
       className: 'bg-amber-400',
     },
   ];
-  const campaignPerformances = useMemo<CampaignPerformance[]>(() => activeCampaigns
-    .map(campaign => {
-      const possibleTasks = enabledTasks.filter(task =>
-        task.category === 'campagna' &&
-        task.campaignId === campaign.id &&
-        isTaskPossibleUntilToday(task, today)
-      );
-      const sourceRows = new Map<string, CampaignSourcePerformance>();
-
-      possibleTasks.forEach(task => {
-        const sourceKey = `${task.sourceCode}|${task.sourceName}`;
-        const existing = sourceRows.get(sourceKey) || {
-          sourceCode: task.sourceCode,
-          sourceName: task.sourceName,
-          possible: 0,
-          worked: 0,
-          expired: 0,
-          open: 0,
-        };
-
-        existing.possible += 1;
-        if (isTaskWorked(task)) {
-          existing.worked += 1;
-        } else if (isTaskExpired(task, today)) {
-          existing.expired += 1;
-        } else {
-          existing.open += 1;
-        }
-        sourceRows.set(sourceKey, existing);
-      });
-
-      const worked = possibleTasks.filter(isTaskWorked).length;
-      const expired = possibleTasks.filter(task =>
-        !isTaskWorked(task) && isTaskExpired(task, today)
-      ).length;
-
-      return {
+  const campaignPerformances = useMemo<CampaignPerformance[]>(() => {
+    const configuredCampaigns = activeCampaigns.map(campaign =>
+      buildCampaignPerformance(
         campaign,
-        possible: possibleTasks.length,
-        worked,
-        expired,
-        open: possibleTasks.length - worked - expired,
-        sources: [...sourceRows.values()].sort((first, second) =>
-          first.sourceCode.localeCompare(second.sourceCode, 'it') ||
-          first.sourceName.localeCompare(second.sourceName, 'it')
+        enabledTasks.filter(task =>
+          task.category === 'campagna' && task.campaignId === campaign.id
         ),
-      };
-    })
-    .sort((first, second) =>
-      first.campaign.name.localeCompare(second.campaign.name, 'it')
-    ), [activeCampaigns, enabledTasks, today]);
+        today,
+      )
+    );
+    const winbackCampaign: Campaign = {
+      id: WINBACK_PERFORMANCE_ID,
+      name: 'Winback',
+      description: 'Richiamo clienti usciti in prossimità dell’anniversario.',
+      active: true,
+    };
+    const winbackPerformance = buildCampaignPerformance(
+      winbackCampaign,
+      enabledTasks.filter(task => task.category === 'winback'),
+      today,
+    );
+
+    return [...configuredCampaigns, winbackPerformance].sort((first, second) =>
+      first.campaign.id === WINBACK_PERFORMANCE_ID
+        ? 1
+        : second.campaign.id === WINBACK_PERFORMANCE_ID
+          ? -1
+          : first.campaign.name.localeCompare(second.campaign.name, 'it')
+    );
+  }, [activeCampaigns, enabledTasks, today]);
   const sourceActivity = useMemo<SourceActivityRow[]>(() => {
     const rows = new Map<string, SourceActivityRow>();
 
@@ -389,6 +383,21 @@ export default function AdminCallCenter() {
   }, [enabledTasks, workPeriodRange]);
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const showMetricTasks = (view: OperationalView) => {
+    setSearch('');
+    setStatus('all');
+    setSelectedCategories([]);
+    setSource('all');
+    setAssignee('all');
+    setStartDate('');
+    setEndDate('');
+    setOperationalView(view);
+    setPage(1);
+    window.setTimeout(() => {
+      callsListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
 
   const exportCalls = () => {
     const headers = [
@@ -437,27 +446,66 @@ export default function AdminCallCenter() {
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-2 xl:grid-cols-5 border border-slate-200 bg-white rounded-lg overflow-hidden">
-        <Metric label="Da lavorare oggi" value={todayCount} icon={<PhoneCall size={18} />} />
-        <Metric label="Arretrate ancora valide" value={overdueCount} icon={<Clock3 size={18} />} />
-        <Metric label="Prossimi 7 giorni" value={nextSevenCount} icon={<CalendarClock size={18} />} />
+        <Metric
+          label="Da lavorare oggi"
+          value={todayCount}
+          icon={<PhoneCall size={18} />}
+          active={operationalView === 'today'}
+          onClick={() => showMetricTasks('today')}
+        />
+        <Metric
+          label="Arretrate ancora valide"
+          value={overdueCount}
+          icon={<Clock3 size={18} />}
+          active={operationalView === 'overdue'}
+          onClick={() => showMetricTasks('overdue')}
+        />
+        <Metric
+          label="Prossimi 7 giorni"
+          value={nextSevenCount}
+          icon={<CalendarClock size={18} />}
+          active={operationalView === 'next7'}
+          onClick={() => showMetricTasks('next7')}
+        />
         <Metric
           label="Effettuate nel periodo"
           value={workedPeriodCount}
           detail={formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}
           icon={<CheckCircle2 size={18} />}
+          active={operationalView === 'worked'}
+          onClick={() => showMetricTasks('worked')}
         />
-        <Metric
-          label="Effettuate / possibili"
-          value={`${workedUntilTodayCount}/${possibleUntilToday.length}`}
+        <RatioMetric
+          worked={workedUntilTodayCount}
+          possible={possibleUntilToday.length}
           detail={`${workedUntilTodayPercent}% fino a oggi`}
           icon={<PhoneCall size={18} />}
+          workedActive={operationalView === 'workedPossible'}
+          possibleActive={operationalView === 'possible'}
+          onWorkedClick={() => showMetricTasks('workedPossible')}
+          onPossibleClick={() => showMetricTasks('possible')}
         />
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-4">
-        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+      <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] gap-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-[#003781]">
+                <BarChart3 size={18} />
+                <h3 className="font-bold text-slate-800">Esploso chiamate possibili</h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Dal {formatDate(CALL_TRACKING_START_DATE)} a oggi, incluse le finestre scadute.
+              </p>
+            </div>
+            <p className="text-sm font-black text-slate-800 whitespace-nowrap">
+              {possibleUntilToday.length} totali
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">
               Periodo analisi chiamate effettuate
             </p>
             <div className="flex flex-wrap gap-2">
@@ -477,44 +525,25 @@ export default function AdminCallCenter() {
                 Personalizzato
               </ViewButton>
             </div>
-          </div>
 
-          {workPeriod === 'custom' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:w-[360px]">
-              <input
-                type="date"
-                value={workStartDate}
-                onChange={event => setWorkStartDate(event.target.value)}
-                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                title="Inizio periodo lavorazione"
-              />
-              <input
-                type="date"
-                value={workEndDate}
-                onChange={event => setWorkEndDate(event.target.value)}
-                className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                title="Fine periodo lavorazione"
-              />
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] gap-4">
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-[#003781]">
-                <BarChart3 size={18} />
-                <h3 className="font-bold text-slate-800">Esploso chiamate possibili</h3>
+            {workPeriod === 'custom' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                <input
+                  type="date"
+                  value={workStartDate}
+                  onChange={event => setWorkStartDate(event.target.value)}
+                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                  title="Inizio periodo lavorazione"
+                />
+                <input
+                  type="date"
+                  value={workEndDate}
+                  onChange={event => setWorkEndDate(event.target.value)}
+                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                  title="Fine periodo lavorazione"
+                />
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Dal {formatDate(CALL_TRACKING_START_DATE)} a oggi, incluse le finestre scadute.
-              </p>
-            </div>
-            <p className="text-sm font-black text-slate-800 whitespace-nowrap">
-              {possibleUntilToday.length} totali
-            </p>
+            )}
           </div>
 
           <ProgressBreakdown
@@ -536,34 +565,64 @@ export default function AdminCallCenter() {
         </div>
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-4">
-        <div className="flex items-center gap-2 text-[#003781]">
-          <BarChart3 size={18} />
-          <h3 className="font-bold text-slate-800">Performance campagne attive</h3>
-        </div>
-        <p className="text-xs text-slate-500 mt-1 max-w-4xl">
-          Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
-          non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
-          entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
-        </p>
-
-        {campaignPerformances.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-500">
-            Nessuna campagna attiva.
+      <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowCampaignPerformances(value => !value)}
+          aria-expanded={showCampaignPerformances}
+          className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-50 transition-colors"
+        >
+          <div>
+            <div className="flex items-center gap-2 text-[#003781]">
+              <BarChart3 size={18} />
+              <h3 className="font-bold text-slate-800">Performance campagne attive</h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {campaignPerformances.length}{' '}
+              {campaignPerformances.length === 1 ? 'campagna attiva' : 'campagne attive'},
+              {' '}Winback incluso
+            </p>
           </div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {campaignPerformances.map(performance => (
-              <CampaignPerformanceCard
-                key={performance.campaign.id}
-                performance={performance}
-              />
-            ))}
+          <div className="flex items-center gap-2 text-xs font-bold text-[#003781] shrink-0">
+            {showCampaignPerformances ? 'Nascondi' : 'Mostra'}
+            <ChevronDown
+              size={18}
+              className={`transition-transform ${showCampaignPerformances ? 'rotate-180' : ''}`}
+            />
+          </div>
+        </button>
+
+        {showCampaignPerformances && (
+          <div className="p-4 border-t border-slate-200">
+            <p className="text-xs text-slate-500 max-w-4xl">
+              Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
+              non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
+              entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              {campaignPerformances.map(performance => (
+                <CampaignPerformanceCard
+                  key={performance.campaign.id}
+                  performance={performance}
+                />
+              ))}
+            </div>
           </div>
         )}
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-4">
+      <section
+        ref={callsListRef}
+        className="bg-white border border-slate-200 rounded-lg p-4 scroll-mt-4"
+      >
+        <div className="mb-4">
+          <h3 className="font-bold text-slate-800">Elenco chiamate</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {getOperationalViewLabel(operationalView)} · {filteredTasks.length} risultati
+          </p>
+        </div>
+
         <div className="flex flex-wrap gap-2 mb-4">
           <ViewButton
             active={operationalView === 'today'}
@@ -777,18 +836,82 @@ function Metric({
   value,
   icon,
   detail,
+  active,
+  onClick,
 }: {
   label: string;
   value: React.ReactNode;
   icon: React.ReactNode;
   detail?: string;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="p-4 border-r border-b xl:border-b-0 border-slate-200 last:border-r-0">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`p-4 border-r border-b xl:border-b-0 border-slate-200 last:border-r-0 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#003781] ${
+        active ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
+      }`}
+    >
       <div className="text-[#003781]">{icon}</div>
       <p className="text-2xl font-black text-slate-800 mt-2">{value}</p>
       <p className="text-xs font-bold text-slate-500">{label}</p>
       {detail && <p className="text-[11px] text-slate-400 mt-1">{detail}</p>}
+    </button>
+  );
+}
+
+function RatioMetric({
+  worked,
+  possible,
+  icon,
+  detail,
+  workedActive,
+  possibleActive,
+  onWorkedClick,
+  onPossibleClick,
+}: {
+  worked: number;
+  possible: number;
+  icon: React.ReactNode;
+  detail: string;
+  workedActive: boolean;
+  possibleActive: boolean;
+  onWorkedClick: () => void;
+  onPossibleClick: () => void;
+}) {
+  return (
+    <div className="p-4 border-r border-b xl:border-b-0 border-slate-200 last:border-r-0 bg-white">
+      <div className="text-[#003781]">{icon}</div>
+      <div className="flex items-baseline gap-1 mt-2 text-2xl font-black">
+        <button
+          type="button"
+          onClick={onWorkedClick}
+          aria-pressed={workedActive}
+          className={`rounded px-1 -ml-1 focus:outline-none focus:ring-2 focus:ring-[#003781] ${
+            workedActive ? 'bg-[#003781] text-white' : 'text-slate-800 hover:bg-blue-50'
+          }`}
+          title="Mostra le chiamate effettuate fino a oggi"
+        >
+          {worked}
+        </button>
+        <span className="text-slate-400">/</span>
+        <button
+          type="button"
+          onClick={onPossibleClick}
+          aria-pressed={possibleActive}
+          className={`rounded px-1 focus:outline-none focus:ring-2 focus:ring-[#003781] ${
+            possibleActive ? 'bg-[#003781] text-white' : 'text-slate-800 hover:bg-blue-50'
+          }`}
+          title="Mostra tutte le chiamate possibili fino a oggi"
+        >
+          {possible}
+        </button>
+      </div>
+      <p className="text-xs font-bold text-slate-500">Effettuate / possibili</p>
+      <p className="text-[11px] text-slate-400 mt-1">{detail}</p>
     </div>
   );
 }
@@ -803,33 +926,38 @@ function ProgressBreakdown({
   const visibleSegments = segments.filter(segment => segment.count > 0);
 
   return (
-    <div className="mt-4 space-y-4">
-      <div className="h-9 bg-slate-100 rounded-lg overflow-hidden flex">
+    <div className="mt-4 space-y-3">
+      <div className="h-8 bg-slate-100 rounded-lg overflow-hidden flex">
         {visibleSegments.length > 0 ? visibleSegments.map(segment => (
           <div
             key={segment.id}
-            className={`${segment.className} h-full`}
+            className={`${segment.className} h-full min-w-0 flex items-center justify-center px-1`}
             style={{ width: `${getPercent(segment.count, total)}%` }}
             title={`${segment.label}: ${segment.count} (${getPercent(segment.count, total)}%)`}
-          />
+          >
+            <span className={`text-xs font-black truncate ${
+              segment.id === 'expired' ? 'text-slate-800' : 'text-white'
+            }`}>
+              {segment.count}
+            </span>
+          </div>
         )) : (
           <div className="h-full w-full bg-slate-100" />
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {segments.map(segment => (
-          <div key={segment.id} className="flex items-center justify-between gap-3">
+          <div key={segment.id} className="flex items-center justify-between gap-2 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               <span className={`w-2.5 h-2.5 rounded-full ${segment.className}`} />
               <span className="text-xs font-semibold text-slate-600 truncate">
                 {segment.label}
               </span>
             </div>
-            <div className="text-right shrink-0">
-              <p className="text-sm font-black text-slate-800">{segment.count}</p>
-              <p className="text-[11px] text-slate-400">{getPercent(segment.count, total)}%</p>
-            </div>
+            <span className="text-[11px] font-bold text-slate-400 shrink-0">
+              {getPercent(segment.count, total)}%
+            </span>
           </div>
         ))}
       </div>
@@ -1185,7 +1313,72 @@ function getPercent(value: number, total: number): number {
   return Math.round((value / total) * 100);
 }
 
+function buildCampaignPerformance(
+  campaign: Campaign,
+  tasks: CallTask[],
+  today: string,
+): CampaignPerformance {
+  const possibleTasks = tasks.filter(task => isTaskPossibleUntilToday(task, today));
+  const sourceRows = new Map<string, CampaignSourcePerformance>();
+
+  possibleTasks.forEach(task => {
+    const sourceKey = `${task.sourceCode}|${task.sourceName}`;
+    const existing = sourceRows.get(sourceKey) || {
+      sourceCode: task.sourceCode,
+      sourceName: task.sourceName,
+      possible: 0,
+      worked: 0,
+      expired: 0,
+      open: 0,
+    };
+
+    existing.possible += 1;
+    if (isTaskWorked(task)) {
+      existing.worked += 1;
+    } else if (isTaskExpired(task, today)) {
+      existing.expired += 1;
+    } else {
+      existing.open += 1;
+    }
+    sourceRows.set(sourceKey, existing);
+  });
+
+  const worked = possibleTasks.filter(isTaskWorked).length;
+  const expired = possibleTasks.filter(task =>
+    !isTaskWorked(task) && isTaskExpired(task, today)
+  ).length;
+
+  return {
+    campaign,
+    possible: possibleTasks.length,
+    worked,
+    expired,
+    open: possibleTasks.length - worked - expired,
+    sources: [...sourceRows.values()].sort((first, second) =>
+      first.sourceCode.localeCompare(second.sourceCode, 'it') ||
+      first.sourceName.localeCompare(second.sourceName, 'it')
+    ),
+  };
+}
+
+function getOperationalViewLabel(view: OperationalView): string {
+  return {
+    today: 'Da lavorare oggi',
+    overdue: 'Arretrate ancora valide',
+    next7: 'Prossimi 7 giorni',
+    active: 'Tutte le chiamate attive',
+    worked: 'Effettuate nel periodo',
+    workedPossible: 'Effettuate fino a oggi',
+    possible: 'Tutte le chiamate possibili fino a oggi',
+    history: 'Storico e chiamate scadute',
+  }[view];
+}
+
 function getCampaignKindLabel(campaign: Campaign): string {
+  if (campaign.id === WINBACK_PERFORMANCE_ID) {
+    return 'Winback · anniversario dell’uscita cliente';
+  }
+
   if (campaign.campaignKind === 'annualExpirations') {
     const timing = typeof campaign.daysBeforeExpiration === 'number'
       ? ` · ${campaign.daysBeforeExpiration} giorni prima della scadenza`
