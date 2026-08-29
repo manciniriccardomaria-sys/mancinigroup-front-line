@@ -96,7 +96,7 @@ export default function AdminCallCenter() {
   const [workPeriod, setWorkPeriod] = useState<WorkPeriod>('all');
   const [workStartDate, setWorkStartDate] = useState('');
   const [workEndDate, setWorkEndDate] = useState('');
-  const [showCampaignPerformances, setShowCampaignPerformances] = useState(false);
+  const [expandedCampaignIds, setExpandedCampaignIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const callsListRef = useRef<HTMLElement | null>(null);
   const today = getItalyDate();
@@ -565,51 +565,40 @@ export default function AdminCallCenter() {
         </div>
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setShowCampaignPerformances(value => !value)}
-          aria-expanded={showCampaignPerformances}
-          className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-50 transition-colors"
-        >
-          <div>
-            <div className="flex items-center gap-2 text-[#003781]">
-              <BarChart3 size={18} />
-              <h3 className="font-bold text-slate-800">Performance campagne attive</h3>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {campaignPerformances.length}{' '}
-              {campaignPerformances.length === 1 ? 'campagna attiva' : 'campagne attive'},
-              {' '}Winback incluso
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-bold text-[#003781] shrink-0">
-            {showCampaignPerformances ? 'Nascondi' : 'Mostra'}
-            <ChevronDown
-              size={18}
-              className={`transition-transform ${showCampaignPerformances ? 'rotate-180' : ''}`}
-            />
-          </div>
-        </button>
+      <section className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 text-[#003781]">
+          <BarChart3 size={18} />
+          <h3 className="font-bold text-slate-800">Performance campagne attive</h3>
+        </div>
+        <p className="text-xs text-slate-500 mt-1">
+          {campaignPerformances.length}{' '}
+          {campaignPerformances.length === 1 ? 'campagna attiva' : 'campagne attive'},
+          {' '}Winback incluso. Seleziona una campagna per aprire i dettagli.
+        </p>
+        <p className="text-xs text-slate-500 mt-2 max-w-4xl">
+          Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
+          non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
+          entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
+        </p>
 
-        {showCampaignPerformances && (
-          <div className="p-4 border-t border-slate-200">
-            <p className="text-xs text-slate-500 max-w-4xl">
-              Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
-              non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
-              entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
-            </p>
+        <div className="mt-4 space-y-3">
+          {campaignPerformances.map(performance => {
+            const expanded = expandedCampaignIds.includes(performance.campaign.id);
 
-            <div className="mt-4 space-y-4">
-              {campaignPerformances.map(performance => (
-                <CampaignPerformanceCard
-                  key={performance.campaign.id}
-                  performance={performance}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+            return (
+              <CampaignPerformanceCard
+                key={performance.campaign.id}
+                performance={performance}
+                expanded={expanded}
+                onToggle={() => setExpandedCampaignIds(previous =>
+                  expanded
+                    ? previous.filter(id => id !== performance.campaign.id)
+                    : [...previous, performance.campaign.id]
+                )}
+              />
+            );
+          })}
+        </div>
       </section>
 
       <section
@@ -1009,14 +998,25 @@ function SourceActivity({
 
 function CampaignPerformanceCard({
   performance,
+  expanded,
+  onToggle,
 }: {
   performance: CampaignPerformance;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const completionPercent = getPercent(performance.worked, performance.possible);
 
   return (
     <article className="border border-slate-200 rounded-lg overflow-hidden">
-      <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className={`w-full p-4 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 text-left hover:bg-slate-100 transition-colors ${
+          expanded ? 'border-b border-slate-200' : ''
+        }`}
+      >
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="font-black text-slate-800">{performance.campaign.name}</h4>
@@ -1028,83 +1028,93 @@ function CampaignPerformanceCard({
             {getCampaignKindLabel(performance.campaign)}
           </p>
         </div>
-        <div className="sm:text-right">
-          <p className="text-2xl font-black text-[#003781]">{completionPercent}%</p>
-          <p className="text-[11px] font-bold text-slate-500">performance complessiva</p>
-        </div>
-      </div>
-
-      <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <CampaignMetric
-          label="Chiamate effettuate / possibili"
-          value={`${performance.worked}/${performance.possible}`}
-          detail={`${completionPercent}% completate`}
-          tone="success"
-        />
-        <CampaignMetric
-          label="Perse per limite temporale"
-          value={performance.expired}
-          detail={`${getPercent(performance.expired, performance.possible)}% delle possibili`}
-          tone="warning"
-        />
-        <CampaignMetric
-          label="Ancora lavorabili"
-          value={performance.open}
-          detail={`${getPercent(performance.open, performance.possible)}% delle possibili`}
-          tone="info"
-        />
-      </div>
-
-      <div className="border-t border-slate-200">
-        <div className="px-4 pt-4">
-          <h5 className="text-sm font-black text-slate-800">Attività fonti</h5>
-          <p className="text-xs text-slate-500 mt-1">
-            Dettaglio delle fonti sulle chiamate possibili della campagna.
-          </p>
-        </div>
-
-        {performance.sources.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-slate-500">
-            Nessuna chiamata è ancora entrata nella finestra operativa.
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="sm:text-right">
+            <p className="text-2xl font-black text-[#003781]">{completionPercent}%</p>
+            <p className="text-[11px] font-bold text-slate-500">performance complessiva</p>
           </div>
-        ) : (
-          <div className="overflow-x-auto mt-3">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-bold">Fonte</th>
-                  <th className="px-4 py-2.5 text-right font-bold">Effettuate / possibili</th>
-                  <th className="px-4 py-2.5 text-right font-bold">Completamento</th>
-                  <th className="px-4 py-2.5 text-right font-bold">Perse per limite</th>
-                  <th className="px-4 py-2.5 text-right font-bold">Ancora lavorabili</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {performance.sources.map(row => (
-                  <tr key={`${row.sourceCode}|${row.sourceName}`}>
-                    <td className="px-4 py-3">
-                      <p className="font-bold text-slate-800">{row.sourceCode}</p>
-                      <p className="text-xs text-slate-500">{row.sourceName}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right font-black text-slate-800">
-                      {row.worked}/{row.possible}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700">
-                      {getPercent(row.worked, row.possible)}%
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-amber-700">
-                      {row.expired}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-700">
-                      {row.open}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <ChevronDown
+            size={20}
+            className={`text-[#003781] transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </button>
+
+      {expanded && (
+        <div>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <CampaignMetric
+              label="Chiamate effettuate / possibili"
+              value={`${performance.worked}/${performance.possible}`}
+              detail={`${completionPercent}% completate`}
+              tone="success"
+            />
+            <CampaignMetric
+              label="Perse per limite temporale"
+              value={performance.expired}
+              detail={`${getPercent(performance.expired, performance.possible)}% delle possibili`}
+              tone="warning"
+            />
+            <CampaignMetric
+              label="Ancora lavorabili"
+              value={performance.open}
+              detail={`${getPercent(performance.open, performance.possible)}% delle possibili`}
+              tone="info"
+            />
           </div>
-        )}
-      </div>
+
+          <div className="border-t border-slate-200">
+            <div className="px-4 pt-4">
+              <h5 className="text-sm font-black text-slate-800">Attività fonti</h5>
+              <p className="text-xs text-slate-500 mt-1">
+                Dettaglio delle fonti sulle chiamate possibili della campagna.
+              </p>
+            </div>
+
+            {performance.sources.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-slate-500">
+                Nessuna chiamata è ancora entrata nella finestra operativa.
+              </div>
+            ) : (
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left font-bold">Fonte</th>
+                      <th className="px-4 py-2.5 text-right font-bold">Effettuate / possibili</th>
+                      <th className="px-4 py-2.5 text-right font-bold">Completamento</th>
+                      <th className="px-4 py-2.5 text-right font-bold">Perse per limite</th>
+                      <th className="px-4 py-2.5 text-right font-bold">Ancora lavorabili</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {performance.sources.map(row => (
+                      <tr key={`${row.sourceCode}|${row.sourceName}`}>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-800">{row.sourceCode}</p>
+                          <p className="text-xs text-slate-500">{row.sourceName}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right font-black text-slate-800">
+                          {row.worked}/{row.possible}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                          {getPercent(row.worked, row.possible)}%
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-amber-700">
+                          {row.expired}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-blue-700">
+                          {row.open}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }
