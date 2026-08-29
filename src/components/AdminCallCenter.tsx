@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
+  Activity,
   BarChart3,
   CalendarClock,
   CheckCircle2,
@@ -8,7 +9,6 @@ import {
   Download,
   PhoneCall,
   Search,
-  Trophy,
 } from 'lucide-react';
 import { addDays, format, isValid, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -49,10 +49,26 @@ type BreakdownSegment = {
   count: number;
   className: string;
 };
-type SourceRankingRow = {
+type SourceActivityRow = {
   sourceCode: string;
   sourceName: string;
   count: number;
+};
+type CampaignSourcePerformance = {
+  sourceCode: string;
+  sourceName: string;
+  possible: number;
+  worked: number;
+  expired: number;
+  open: number;
+};
+type CampaignPerformance = {
+  campaign: Campaign;
+  possible: number;
+  worked: number;
+  expired: number;
+  open: number;
+  sources: CampaignSourcePerformance[];
 };
 
 export default function AdminCallCenter() {
@@ -272,7 +288,7 @@ export default function AdminCallCenter() {
   const possibleBreakdownSegments: BreakdownSegment[] = [
     {
       id: 'worked',
-      label: 'Lavorate',
+      label: 'Effettuate',
       count: workedUntilTodayCount,
       className: 'bg-emerald-500',
     },
@@ -289,8 +305,59 @@ export default function AdminCallCenter() {
       className: 'bg-amber-400',
     },
   ];
-  const sourceRanking = useMemo<SourceRankingRow[]>(() => {
-    const rows = new Map<string, SourceRankingRow>();
+  const campaignPerformances = useMemo<CampaignPerformance[]>(() => activeCampaigns
+    .map(campaign => {
+      const possibleTasks = enabledTasks.filter(task =>
+        task.category === 'campagna' &&
+        task.campaignId === campaign.id &&
+        isTaskPossibleUntilToday(task, today)
+      );
+      const sourceRows = new Map<string, CampaignSourcePerformance>();
+
+      possibleTasks.forEach(task => {
+        const sourceKey = `${task.sourceCode}|${task.sourceName}`;
+        const existing = sourceRows.get(sourceKey) || {
+          sourceCode: task.sourceCode,
+          sourceName: task.sourceName,
+          possible: 0,
+          worked: 0,
+          expired: 0,
+          open: 0,
+        };
+
+        existing.possible += 1;
+        if (isTaskWorked(task)) {
+          existing.worked += 1;
+        } else if (isTaskExpired(task, today)) {
+          existing.expired += 1;
+        } else {
+          existing.open += 1;
+        }
+        sourceRows.set(sourceKey, existing);
+      });
+
+      const worked = possibleTasks.filter(isTaskWorked).length;
+      const expired = possibleTasks.filter(task =>
+        !isTaskWorked(task) && isTaskExpired(task, today)
+      ).length;
+
+      return {
+        campaign,
+        possible: possibleTasks.length,
+        worked,
+        expired,
+        open: possibleTasks.length - worked - expired,
+        sources: [...sourceRows.values()].sort((first, second) =>
+          first.sourceCode.localeCompare(second.sourceCode, 'it') ||
+          first.sourceName.localeCompare(second.sourceName, 'it')
+        ),
+      };
+    })
+    .sort((first, second) =>
+      first.campaign.name.localeCompare(second.campaign.name, 'it')
+    ), [activeCampaigns, enabledTasks, today]);
+  const sourceActivity = useMemo<SourceActivityRow[]>(() => {
+    const rows = new Map<string, SourceActivityRow>();
 
     enabledTasks.forEach(task => {
       if (
@@ -374,13 +441,13 @@ export default function AdminCallCenter() {
         <Metric label="Arretrate ancora valide" value={overdueCount} icon={<Clock3 size={18} />} />
         <Metric label="Prossimi 7 giorni" value={nextSevenCount} icon={<CalendarClock size={18} />} />
         <Metric
-          label="Lavorate nel periodo"
+          label="Effettuate nel periodo"
           value={workedPeriodCount}
           detail={formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}
           icon={<CheckCircle2 size={18} />}
         />
         <Metric
-          label="Fatte / possibili"
+          label="Effettuate / possibili"
           value={`${workedUntilTodayCount}/${possibleUntilToday.length}`}
           detail={`${workedUntilTodayPercent}% fino a oggi`}
           icon={<PhoneCall size={18} />}
@@ -391,7 +458,7 @@ export default function AdminCallCenter() {
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-              Periodo analisi chiamate lavorate
+              Periodo analisi chiamate effettuate
             </p>
             <div className="flex flex-wrap gap-2">
               <ViewButton active={workPeriod === 'all'} onClick={() => setWorkPeriod('all')}>
@@ -458,15 +525,42 @@ export default function AdminCallCenter() {
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <div className="flex items-center gap-2 text-[#003781]">
-            <Trophy size={18} />
-            <h3 className="font-bold text-slate-800">Classifica fonti</h3>
+            <Activity size={18} />
+            <h3 className="font-bold text-slate-800">Attività fonti</h3>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Chiamate lavorate nel periodo {formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}.
+            Chiamate effettuate nel periodo {formatRangeLabel(workPeriodRange.start, workPeriodRange.end)}.
           </p>
 
-          <SourceRanking rows={sourceRanking} total={workedPeriodCount} />
+          <SourceActivity rows={sourceActivity} total={workedPeriodCount} />
         </div>
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 text-[#003781]">
+          <BarChart3 size={18} />
+          <h3 className="font-bold text-slate-800">Performance campagne attive</h3>
+        </div>
+        <p className="text-xs text-slate-500 mt-1 max-w-4xl">
+          Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
+          non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
+          entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
+        </p>
+
+        {campaignPerformances.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-500">
+            Nessuna campagna attiva.
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {campaignPerformances.map(performance => (
+              <CampaignPerformanceCard
+                key={performance.campaign.id}
+                performance={performance}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
@@ -493,7 +587,7 @@ export default function AdminCallCenter() {
             active={operationalView === 'worked'}
             onClick={() => setOperationalView('worked')}
           >
-            Lavorate nel periodo
+            Effettuate nel periodo
           </ViewButton>
           <ViewButton
             active={operationalView === 'history'}
@@ -576,7 +670,7 @@ export default function AdminCallCenter() {
           <table className="w-full min-w-[1100px] text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                {['Data', 'Lavorata', 'Cliente', 'Categoria', 'Fonte', 'Stato', 'Assegnatario', 'Dettagli'].map(label => (
+                {['Data', 'Effettuata', 'Cliente', 'Categoria', 'Fonte', 'Stato', 'Assegnatario', 'Dettagli'].map(label => (
                   <th key={label} className="text-left px-4 py-3 font-bold">{label}</th>
                 ))}
               </tr>
@@ -743,11 +837,11 @@ function ProgressBreakdown({
   );
 }
 
-function SourceRanking({
+function SourceActivity({
   rows,
   total,
 }: {
-  rows: SourceRankingRow[];
+  rows: SourceActivityRow[];
   total: number;
 }) {
   const maxCount = rows[0]?.count || 0;
@@ -755,18 +849,17 @@ function SourceRanking({
   if (rows.length === 0) {
     return (
       <div className="mt-4 py-6 text-center text-sm text-slate-500">
-        Nessuna chiamata lavorata nel periodo.
+        Nessuna chiamata effettuata nel periodo.
       </div>
     );
   }
 
   return (
     <div className="mt-4 space-y-3">
-      {rows.map((row, index) => (
+      {rows.map(row => (
         <div key={row.sourceCode} className="space-y-1.5">
           <div className="flex items-center justify-between gap-3 text-xs">
             <div className="min-w-0">
-              <span className="font-black text-slate-800 mr-2">{index + 1}.</span>
               <span className="font-bold text-slate-700">{row.sourceCode}</span>
               <span className="text-slate-500"> · {row.sourceName}</span>
             </div>
@@ -782,6 +875,134 @@ function SourceRanking({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function CampaignPerformanceCard({
+  performance,
+}: {
+  performance: CampaignPerformance;
+}) {
+  const completionPercent = getPercent(performance.worked, performance.possible);
+
+  return (
+    <article className="border border-slate-200 rounded-lg overflow-hidden">
+      <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="font-black text-slate-800">{performance.campaign.name}</h4>
+            <span className="inline-flex px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wide">
+              Attiva
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            {getCampaignKindLabel(performance.campaign)}
+          </p>
+        </div>
+        <div className="sm:text-right">
+          <p className="text-2xl font-black text-[#003781]">{completionPercent}%</p>
+          <p className="text-[11px] font-bold text-slate-500">performance complessiva</p>
+        </div>
+      </div>
+
+      <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <CampaignMetric
+          label="Chiamate effettuate / possibili"
+          value={`${performance.worked}/${performance.possible}`}
+          detail={`${completionPercent}% completate`}
+          tone="success"
+        />
+        <CampaignMetric
+          label="Perse per limite temporale"
+          value={performance.expired}
+          detail={`${getPercent(performance.expired, performance.possible)}% delle possibili`}
+          tone="warning"
+        />
+        <CampaignMetric
+          label="Ancora lavorabili"
+          value={performance.open}
+          detail={`${getPercent(performance.open, performance.possible)}% delle possibili`}
+          tone="info"
+        />
+      </div>
+
+      <div className="border-t border-slate-200">
+        <div className="px-4 pt-4">
+          <h5 className="text-sm font-black text-slate-800">Attività fonti</h5>
+          <p className="text-xs text-slate-500 mt-1">
+            Dettaglio delle fonti sulle chiamate possibili della campagna.
+          </p>
+        </div>
+
+        {performance.sources.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-slate-500">
+            Nessuna chiamata è ancora entrata nella finestra operativa.
+          </div>
+        ) : (
+          <div className="overflow-x-auto mt-3">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-bold">Fonte</th>
+                  <th className="px-4 py-2.5 text-right font-bold">Effettuate / possibili</th>
+                  <th className="px-4 py-2.5 text-right font-bold">Completamento</th>
+                  <th className="px-4 py-2.5 text-right font-bold">Perse per limite</th>
+                  <th className="px-4 py-2.5 text-right font-bold">Ancora lavorabili</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {performance.sources.map(row => (
+                  <tr key={`${row.sourceCode}|${row.sourceName}`}>
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-slate-800">{row.sourceCode}</p>
+                      <p className="text-xs text-slate-500">{row.sourceName}</p>
+                    </td>
+                    <td className="px-4 py-3 text-right font-black text-slate-800">
+                      {row.worked}/{row.possible}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                      {getPercent(row.worked, row.possible)}%
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-amber-700">
+                      {row.expired}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-blue-700">
+                      {row.open}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function CampaignMetric({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail: string;
+  tone: 'success' | 'warning' | 'info';
+}) {
+  const className = {
+    success: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+    warning: 'bg-amber-50 border-amber-100 text-amber-700',
+    info: 'bg-blue-50 border-blue-100 text-blue-700',
+  }[tone];
+
+  return (
+    <div className={`border rounded-lg p-3 ${className}`}>
+      <p className="text-2xl font-black">{value}</p>
+      <p className="text-xs font-bold mt-1">{label}</p>
+      <p className="text-[11px] opacity-75 mt-1">{detail}</p>
     </div>
   );
 }
@@ -962,6 +1183,24 @@ function formatRangeLabel(start: string, end: string): string {
 function getPercent(value: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((value / total) * 100);
+}
+
+function getCampaignKindLabel(campaign: Campaign): string {
+  if (campaign.campaignKind === 'annualExpirations') {
+    const timing = typeof campaign.daysBeforeExpiration === 'number'
+      ? ` · ${campaign.daysBeforeExpiration} giorni prima della scadenza`
+      : '';
+    return `Scadenze annuali${timing}`;
+  }
+
+  if (campaign.campaignKind === 'newClients' || !campaign.campaignKind) {
+    const timing = typeof campaign.monthsAfterStart === 'number'
+      ? ` · ${campaign.monthsAfterStart} mesi dall’inizio rapporto`
+      : '';
+    return `Nuovi clienti${timing}`;
+  }
+
+  return campaign.description || 'Campagna';
 }
 
 function matchesCategorySelection(
