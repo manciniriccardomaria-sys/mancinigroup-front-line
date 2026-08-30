@@ -63,7 +63,7 @@ const EMPTY_CAMPAIGN: CampaignDraft = {
   description: '',
   monthsAfterStart: '3',
   daysBeforeExpiration: '45',
-  startDate: CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignDefaultStartDate,
+  startDate: getItalyDate(),
   active: true,
 };
 
@@ -272,12 +272,8 @@ export default function AdminImportPanel() {
       return;
     }
 
-    if (
-      campaignKind === 'annualExpirations' &&
-      campaignDraft.startDate &&
-      !campaignDraft.startDate.match(/^\d{4}-\d{2}-\d{2}$/)
-    ) {
-      setCampaignError('Inserisci una data di inizio valida.');
+    if (!campaignDraft.startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      setCampaignError('Inserisci la data di inizio della campagna.');
       return;
     }
 
@@ -300,7 +296,7 @@ export default function AdminImportPanel() {
         campaignKind,
         monthsAfterStart: campaignKind === 'newClients' ? monthsAfterStart : 1,
         daysBeforeExpiration: campaignKind === 'annualExpirations' ? daysBeforeExpiration : 0,
-        startDate: campaignKind === 'annualExpirations' ? campaignDraft.startDate : '',
+        startDate: campaignDraft.startDate,
         active: campaignDraft.active,
         updatedAt: serverTimestamp(),
       };
@@ -326,11 +322,13 @@ export default function AdminImportPanel() {
       });
       setCampaignMessage(
         campaignDraft.active
-          ? result.totalRows > 0
+          ? result.generatedTasks > 0
             ? `Campagna salvata: ${result.created} chiamate create, ${result.updated} aggiornate e ${result.unchanged} già presenti.`
-            : campaignKind === 'annualExpirations'
-              ? 'Campagna salvata. Importa il file Scadenze clienti per generare le chiamate.'
-              : 'Campagna salvata. Importa il file Nuovi clienti per generare le chiamate.'
+            : result.totalRows > 0
+              ? 'Campagna salvata. Nessuna chiamata disponibile dalla data di inizio selezionata.'
+              : campaignKind === 'annualExpirations'
+                ? 'Campagna salvata. Importa il file Scadenze clienti per generare le chiamate.'
+                : 'Campagna salvata. Importa il file Nuovi clienti per generare le chiamate.'
           : 'Campagna salvata come disattivata.'
       );
       setCampaignDraft(EMPTY_CAMPAIGN);
@@ -355,11 +353,13 @@ export default function AdminImportPanel() {
     try {
       const result = await syncCampaignTasks(campaign);
       setCampaignMessage(
-        result.totalRows > 0
+        result.generatedTasks > 0
           ? `${campaign.name}: ${result.created} chiamate create, ${result.updated} aggiornate e ${result.unchanged} già presenti.`
-          : getCampaignKind(campaign) === 'annualExpirations'
-            ? `${campaign.name}: importa il file Scadenze clienti per generare le chiamate.`
-            : `${campaign.name}: importa il file Nuovi clienti per generare le chiamate.`
+          : result.totalRows > 0
+            ? `${campaign.name}: nessuna chiamata disponibile dalla data di inizio selezionata.`
+            : getCampaignKind(campaign) === 'annualExpirations'
+              ? `${campaign.name}: importa il file Scadenze clienti per generare le chiamate.`
+              : `${campaign.name}: importa il file Nuovi clienti per generare le chiamate.`
       );
     } catch (error) {
       console.error('Campaign synchronization error:', error);
@@ -380,8 +380,7 @@ export default function AdminImportPanel() {
       description: campaign.description,
       monthsAfterStart: String(campaign.monthsAfterStart || 3),
       daysBeforeExpiration: String(campaign.daysBeforeExpiration || 45),
-      startDate: campaign.startDate ||
-        CLIENT_IMPORT_CONFIG.expirations.scheduleRule.annualCampaignDefaultStartDate,
+      startDate: getCampaignStartDateForEditing(campaign),
       active: campaign.active,
     });
   };
@@ -546,10 +545,11 @@ export default function AdminImportPanel() {
                   <p className="text-sm text-slate-500 mt-1">{campaign.description || 'Nessuna descrizione'}</p>
                   <p className="text-xs font-semibold text-[#003781] mt-2">
                     {getCampaignKind(campaign) === 'annualExpirations'
-                      ? `${campaign.daysBeforeExpiration || 0} giorni prima della scadenza${
-                          campaign.startDate ? ` · dal ${formatDateForDisplay(campaign.startDate)}` : ''
-                        }`
+                      ? `${campaign.daysBeforeExpiration || 0} giorni prima della scadenza`
                       : `Dopo ${campaign.monthsAfterStart || 0} mesi dall’ingresso`}
+                    {campaign.startDate
+                      ? ` · dal ${formatDateForDisplay(campaign.startDate)}`
+                      : ''}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -673,8 +673,8 @@ export default function AdminImportPanel() {
                 />
               </label>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003781]">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003781]">
                   Questa campagna crea chiamate a X giorni dalla data in colonna AH.
                   Le chiamate calcolate prima della data inizio vengono escluse.
                 </div>
@@ -694,21 +694,25 @@ export default function AdminImportPanel() {
                     required
                   />
                 </label>
-
-                <label className="block">
-                  <span className="text-xs font-bold text-slate-600">Data inizio</span>
-                  <input
-                    type="date"
-                    value={campaignDraft.startDate}
-                    onChange={event => setCampaignDraft(previous => ({
-                      ...previous,
-                      startDate: event.target.value,
-                    }))}
-                    className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
-                  />
-                </label>
               </div>
             )}
+
+            <label className="block">
+              <span className="text-xs font-bold text-slate-600">Data inizio campagna</span>
+              <input
+                type="date"
+                value={campaignDraft.startDate}
+                onChange={event => setCampaignDraft(previous => ({
+                  ...previous,
+                  startDate: event.target.value,
+                }))}
+                className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#003781]"
+                required
+              />
+              <span className="block mt-1 text-[11px] leading-4 text-slate-500">
+                Le chiamate precedenti a questa data non vengono generate né conteggiate come perse.
+              </span>
+            </label>
 
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -1246,6 +1250,31 @@ function describeCoverageDeadline(daysRemaining: number | null): string {
   if (daysRemaining === 0) return 'Per non restare scoperto, carica i dati oggi.';
   if (daysRemaining === 1) return 'Per non restare scoperto, carica entro 1 giorno.';
   return `Per non restare scoperto, carica entro ${daysRemaining} giorni.`;
+}
+
+function getCampaignStartDateForEditing(campaign: Campaign): string {
+  if (campaign.startDate?.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return campaign.startDate;
+  }
+
+  const createdAt = campaign.createdAt;
+  if (
+    createdAt &&
+    typeof createdAt === 'object' &&
+    'toDate' in createdAt &&
+    typeof createdAt.toDate === 'function'
+  ) {
+    const createdDate = createdAt.toDate();
+    if (createdDate instanceof Date && !Number.isNaN(createdDate.getTime())) {
+      return getItalyDate(createdDate);
+    }
+  }
+
+  if (typeof createdAt === 'string' && createdAt.match(/^\d{4}-\d{2}-\d{2}/)) {
+    return createdAt.slice(0, 10);
+  }
+
+  return getItalyDate();
 }
 
 function formatDateForDisplay(value: string): string {

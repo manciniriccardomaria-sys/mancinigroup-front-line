@@ -153,16 +153,24 @@ export default function AdminCallCenter() {
     () => new Set(activeCampaigns.map(campaign => campaign.id)),
     [activeCampaigns]
   );
+  const activeCampaignsById = useMemo(
+    () => new Map(activeCampaigns.map(campaign => [campaign.id, campaign])),
+    [activeCampaigns]
+  );
 
   const enabledTasks = useMemo(
-    () => tasks.filter(task =>
-      isCallCategoryEnabled(task.category) &&
-      (
-        task.category !== 'campagna' ||
-        Boolean(task.campaignId && activeCampaignIds.has(task.campaignId))
-      )
-    ),
-    [tasks, activeCampaignIds]
+    () => tasks.filter(task => {
+      if (!isCallCategoryEnabled(task.category)) return false;
+      if (task.category !== 'campagna') return true;
+      if (!task.campaignId) return false;
+
+      const campaign = activeCampaignsById.get(task.campaignId);
+      return Boolean(
+        campaign &&
+        task.dueDate >= getCampaignOperationalStartDate(campaign)
+      );
+    }),
+    [tasks, activeCampaignsById]
   );
 
   const sources = useMemo(
@@ -1293,6 +1301,22 @@ function getFirestoreDate(value: unknown): string {
   return '';
 }
 
+function getCampaignOperationalStartDate(campaign: Campaign): string {
+  const configuredStart = campaign.startDate?.match(/^\d{4}-\d{2}-\d{2}$/)
+    ? campaign.startDate
+    : '';
+  if (configuredStart) {
+    return configuredStart > CALL_TRACKING_START_DATE
+      ? configuredStart
+      : CALL_TRACKING_START_DATE;
+  }
+
+  const createdDate = getFirestoreDate(campaign.createdAt);
+  return createdDate > CALL_TRACKING_START_DATE
+    ? createdDate
+    : CALL_TRACKING_START_DATE;
+}
+
 function isDateInRange(date: string, start: string, end: string): boolean {
   if (!date) return false;
   const normalizedStart = start || date;
@@ -1300,10 +1324,14 @@ function isDateInRange(date: string, start: string, end: string): boolean {
   return date >= normalizedStart && date <= normalizedEnd;
 }
 
-function isTaskPossibleUntilToday(task: CallTask, today: string): boolean {
+function isTaskPossibleUntilToday(
+  task: CallTask,
+  today: string,
+  trackingStartDate = CALL_TRACKING_START_DATE,
+): boolean {
   if (!isTaskCampaignWindowOpen(task, today)) return false;
   if (!task.dueDate || task.dueDate > today) return false;
-  if (task.dueDate < CALL_TRACKING_START_DATE) return false;
+  if (task.dueDate < trackingStartDate) return false;
   return true;
 }
 
@@ -1328,7 +1356,10 @@ function buildCampaignPerformance(
   tasks: CallTask[],
   today: string,
 ): CampaignPerformance {
-  const possibleTasks = tasks.filter(task => isTaskPossibleUntilToday(task, today));
+  const trackingStartDate = getCampaignOperationalStartDate(campaign);
+  const possibleTasks = tasks.filter(task =>
+    isTaskPossibleUntilToday(task, today, trackingStartDate)
+  );
   const sourceRows = new Map<string, CampaignSourcePerformance>();
 
   possibleTasks.forEach(task => {
@@ -1393,14 +1424,14 @@ function getCampaignKindLabel(campaign: Campaign): string {
     const timing = typeof campaign.daysBeforeExpiration === 'number'
       ? ` · ${campaign.daysBeforeExpiration} giorni prima della scadenza`
       : '';
-    return `Scadenze annuali${timing}`;
+    return `Scadenze annuali${timing} · dal ${formatDate(getCampaignOperationalStartDate(campaign))}`;
   }
 
   if (campaign.campaignKind === 'newClients' || !campaign.campaignKind) {
     const timing = typeof campaign.monthsAfterStart === 'number'
       ? ` · ${campaign.monthsAfterStart} mesi dall’inizio rapporto`
       : '';
-    return `Nuovi clienti${timing}`;
+    return `Nuovi clienti${timing} · dal ${formatDate(getCampaignOperationalStartDate(campaign))}`;
   }
 
   return campaign.description || 'Campagna';

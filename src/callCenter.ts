@@ -475,6 +475,9 @@ export async function syncCampaignTasks(
       buildAnnualExpirationCampaignTasks(record, [campaign])
     );
     await pruneOpenCampaignTasks(campaign.id, tasks);
+    if (tasks.length === 0) {
+      return createEmptyImportResult(expirationRecords.length);
+    }
 
     return importCallTasks({
       kind: 'expirations',
@@ -496,6 +499,9 @@ export async function syncCampaignTasks(
     buildCampaignTasksForClient(client, [campaign])
   );
   await pruneOpenCampaignTasks(campaign.id, tasks);
+  if (tasks.length === 0) {
+    return createEmptyImportResult(clients.length);
+  }
 
   return importCallTasks({
     kind: 'newClients',
@@ -505,6 +511,19 @@ export async function syncCampaignTasks(
     skippedRows: 0,
     tasks,
   });
+}
+
+function createEmptyImportResult(totalRows: number): ImportResult {
+  return {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    skippedRows: 0,
+    totalRows,
+    generatedTasks: 0,
+    storedClients: 0,
+    storedExpirations: 0,
+  };
 }
 
 async function pruneOpenCampaignTasks(
@@ -807,6 +826,10 @@ function buildCampaignTasksForClient(
     const eventDate = adjustWeekendToMonday(
       addMonths(startDate, monthsAfterStart)
     );
+    const dueDate = format(eventDate, DATE_FORMAT);
+    if (campaign.startDate && dueDate < campaign.startDate) {
+      return undefined;
+    }
     const identity = [
       'campaign',
       client.clientName,
@@ -834,8 +857,8 @@ function buildCampaignTasksForClient(
       coverages: client.coverages,
       birthDate: client.birthDate,
       relationshipStartDate: client.relationshipStartDate,
-      eventDate: format(eventDate, DATE_FORMAT),
-      dueDate: format(eventDate, DATE_FORMAT),
+      eventDate: dueDate,
+      dueDate,
     });
   }).filter((task): task is ParsedImport['tasks'][number] => Boolean(task));
 }
