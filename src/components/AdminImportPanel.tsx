@@ -1,21 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import {
   addDoc,
   collection,
   deleteDoc,
   doc,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
+  where,
 } from 'firebase/firestore';
 import {
   AlertTriangle,
+  CalendarClock,
   CalendarPlus,
   CheckCircle2,
   FileSpreadsheet,
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
   Upload,
   X,
@@ -24,6 +29,7 @@ import { db } from '../firebase';
 import {
   Campaign,
   CampaignKind,
+  CallTask,
   ImportKind,
   ParsedImport,
   getCampaignKind,
@@ -38,6 +44,7 @@ import {
   parseCustomerClusterWorkbook,
 } from '../customerClusters';
 import { ImportColumnMapping } from '../importColumnResolver';
+import { getItalyDate } from '../lib/utils';
 
 type CampaignDraft = {
   id?: string;
@@ -65,6 +72,17 @@ type UploadKind = ImportKind | 'customerClusters';
 type ImportAnalysis =
   | { kind: ImportKind; parsed: ParsedImport[] }
   | { kind: 'customerClusters'; parsed: ParsedCustomerClusterImport };
+
+type CoverageItem = {
+  key: string;
+  title: string;
+  campaign?: Campaign;
+  importKind: ImportKind;
+  importLabel: string;
+  coveredUntil: string;
+  daysRemaining: number | null;
+  taskCount: number;
+};
 
 const IMPORT_OPTIONS: Array<{
   kind: UploadKind;
@@ -97,8 +115,12 @@ export default function AdminImportPanel() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignDraft, setCampaignDraft] = useState<CampaignDraft>(EMPTY_CAMPAIGN);
   const [savingCampaign, setSavingCampaign] = useState(false);
+  const [syncingCampaignId, setSyncingCampaignId] = useState('');
   const [campaignError, setCampaignError] = useState('');
   const [campaignMessage, setCampaignMessage] = useState('');
+  const [coverageTasksByKey, setCoverageTasksByKey] = useState<Record<string, CallTask[]>>({});
+  const [coverageLoading, setCoverageLoading] = useState(true);
+  const [coverageError, setCoverageError] = useState('');
   const [selectedImportKind, setSelectedImportKind] = useState<UploadKind | ''>('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [analyzingImport, setAnalyzingImport] = useState(false);
@@ -125,6 +147,101 @@ export default function AdminImportPanel() {
     () => activeCampaigns.filter(campaign => getCampaignKind(campaign) === 'newClients'),
     [activeCampaigns]
   );
+
+  useEffect(() => {
+    const definitions = [
+      ...activeCampaigns.map(campaign => ({
+        key: `campaign:${campaign.id}`,
+        field: 'campaignId',
+        value: campaign.id,
+      })),
+      { key: 'winback', field: 'category', value: 'winback' },
+    ];
+    const loadedKeys = new Set<string>();
+    let listening = true;
+
+    setCoverageTasksByKey({});
+    setCoverageLoading(true);
+    setCoverageError('');
+
+    const markLoaded = (key: string) => {
+      loadedKeys.add(key);
+      if (listening && loadedKeys.size === definitions.length) {
+        setCoverageLoading(false);
+      }
+    };
+
+    const unsubscribers = definitions.map(definition => onSnapshot(
+      query(collection(db, 'call_tasks'), where(definition.field, '==', definition.value)),
+      snapshot => {
+        if (!listening) return;
+        setCoverageTasksByKey(previous => ({
+          ...previous,
+          [definition.key]: snapshot.docs.map(item => ({
+            id: item.id,
+            ...item.data(),
+          } as CallTask)),
+        }));
+        markLoaded(definition.key);
+      },
+      error => {
+        console.error(`Coverage listener error (${definition.key}):`, error);
+        if (!listening) return;
+        setCoverageError('Non è stato possibile aggiornare la copertura di tutte le campagne.');
+        markLoaded(definition.key);
+      }
+    ));
+
+    return () => {
+      listening = false;
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, [activeCampaigns]);
+
+  const coverageItems = useMemo<CoverageItem[]>(() => {
+    const today = parseISO(getItalyDate());
+    const buildCoverageItem = (
+      key: string,
+      title: string,
+      importKind: ImportKind,
+      importLabel: string,
+      campaign?: Campaign,
+    ): CoverageItem => {
+      const tasks = coverageTasksByKey[key] || [];
+      const coveredUntil = tasks.reduce((latest, task) => (
+        task.dueDate?.match(/^\d{4}-\d{2}-\d{2}$/) && task.dueDate > latest
+          ? task.dueDate
+          : latest
+      ), '');
+
+      return {
+        key,
+        title,
+        campaign,
+        importKind,
+        importLabel,
+        coveredUntil,
+        daysRemaining: coveredUntil
+          ? differenceInCalendarDays(parseISO(coveredUntil), today)
+          : null,
+        taskCount: tasks.length,
+      };
+    };
+
+    return [
+      ...activeCampaigns.map(campaign => {
+        const campaignKind = getCampaignKind(campaign);
+        return buildCoverageItem(
+          `campaign:${campaign.id}`,
+          campaign.name,
+          campaignKind === 'annualExpirations' ? 'expirations' : 'newClients',
+          campaignKind === 'annualExpirations' ? 'Scadenze clienti' : 'Nuovi clienti',
+          campaign,
+        );
+      }),
+      buildCoverageItem('winback', 'Winback', 'winback', 'Winback'),
+    ];
+  }, [activeCampaigns, coverageTasksByKey]);
 
   const saveCampaign = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -174,6 +291,7 @@ export default function AdminImportPanel() {
       return;
     }
 
+    let persistedCampaignId = '';
     setSavingCampaign(true);
     try {
       const payload = {
@@ -197,6 +315,10 @@ export default function AdminImportPanel() {
         });
         campaignId = campaignRef.id;
       }
+      persistedCampaignId = campaignId;
+      if (!campaignDraft.id) {
+        setCampaignDraft(previous => ({ ...previous, id: campaignId }));
+      }
 
       const result = await syncCampaignTasks({
         id: campaignId,
@@ -214,9 +336,38 @@ export default function AdminImportPanel() {
       setCampaignDraft(EMPTY_CAMPAIGN);
     } catch (error) {
       console.error('Error saving campaign:', error);
-      setCampaignError('Non è stato possibile salvare la campagna.');
+      const detail = error instanceof Error ? ` ${error.message}` : '';
+      setCampaignError(
+        persistedCampaignId
+          ? `La campagna è stata salvata, ma non è stato possibile sincronizzare le chiamate.${detail}`
+          : `Non è stato possibile salvare la campagna.${detail}`
+      );
     } finally {
       setSavingCampaign(false);
+    }
+  };
+
+  const synchronizeCampaign = async (campaign: Campaign) => {
+    setSyncingCampaignId(campaign.id);
+    setCampaignError('');
+    setCampaignMessage('');
+
+    try {
+      const result = await syncCampaignTasks(campaign);
+      setCampaignMessage(
+        result.totalRows > 0
+          ? `${campaign.name}: ${result.created} chiamate create, ${result.updated} aggiornate e ${result.unchanged} già presenti.`
+          : getCampaignKind(campaign) === 'annualExpirations'
+            ? `${campaign.name}: importa il file Scadenze clienti per generare le chiamate.`
+            : `${campaign.name}: importa il file Nuovi clienti per generare le chiamate.`
+      );
+    } catch (error) {
+      console.error('Campaign synchronization error:', error);
+      setCampaignError(error instanceof Error
+        ? `Sincronizzazione non riuscita: ${error.message}`
+        : 'Non è stato possibile sincronizzare le chiamate della campagna.');
+    } finally {
+      setSyncingCampaignId('');
     }
   };
 
@@ -239,6 +390,20 @@ export default function AdminImportPanel() {
     if (!window.confirm(`Eliminare la campagna "${campaign.name}"?`)) return;
     await deleteDoc(doc(db, 'campaigns', campaign.id));
     if (campaignDraft.id === campaign.id) setCampaignDraft(EMPTY_CAMPAIGN);
+  };
+
+  const prepareImport = (kind: ImportKind) => {
+    setSelectedImportKind(kind);
+    setSelectedFiles([]);
+    setImportAnalysis(null);
+    setImportError('');
+    setImportMessage('');
+    window.setTimeout(() => {
+      document.getElementById('import-upload')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
   };
 
   const analyzeImport = async () => {
@@ -388,6 +553,20 @@ export default function AdminImportPanel() {
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => synchronizeCampaign(campaign)}
+                    disabled={!campaign.active || syncingCampaignId === campaign.id}
+                    className="p-2 text-slate-500 hover:text-[#003781] hover:bg-slate-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={campaign.active
+                      ? 'Sincronizza chiamate dai dati memorizzati'
+                      : 'Attiva la campagna per sincronizzarla'}
+                  >
+                    <RefreshCw
+                      size={17}
+                      className={syncingCampaignId === campaign.id ? 'animate-spin' : ''}
+                    />
+                  </button>
                   <button
                     type="button"
                     onClick={() => editCampaign(campaign)}
@@ -564,6 +743,106 @@ export default function AdminImportPanel() {
       </section>
 
       <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="p-5 border-b border-slate-200 flex items-center gap-3">
+          <div className="p-2 bg-blue-50 text-[#003781] rounded-lg">
+            <CalendarClock size={22} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800">Copertura dati campagne</h3>
+            <p className="text-sm text-slate-500">
+              La copertura è calcolata sull’ultima chiamata realmente generata per ogni campagna attiva.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {coverageLoading && (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="animate-spin" size={17} />
+              Calcolo della copertura in corso…
+            </div>
+          )}
+
+          {coverageError && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              {coverageError}
+            </p>
+          )}
+
+          {!coverageLoading && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+              {coverageItems.map(item => {
+                const presentation = getCoveragePresentation(item.daysRemaining);
+                return (
+                  <article
+                    key={item.key}
+                    className={`rounded-lg border p-4 ${presentation.cardClass}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-800 truncate">{item.title}</h4>
+                        <p className="text-xs font-semibold text-slate-500 mt-1">
+                          Caricamento: {item.importLabel}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-full ${presentation.badgeClass}`}>
+                        {presentation.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-4">
+                      {item.coveredUntil ? (
+                        <>
+                          <p className="text-sm text-slate-600">Coperti fino al</p>
+                          <p className="text-xl font-extrabold text-slate-900 mt-0.5">
+                            {formatDateForDisplay(item.coveredUntil)}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-lg font-extrabold text-slate-900">
+                          Nessuna chiamata disponibile
+                        </p>
+                      )}
+                      <p className={`text-sm font-bold mt-2 ${presentation.messageClass}`}>
+                        {describeCoverageDeadline(item.daysRemaining)}
+                      </p>
+                      {item.taskCount > 0 && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          {item.taskCount} chiamate generate complessivamente
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {!item.coveredUntil && item.campaign && (
+                        <button
+                          type="button"
+                          onClick={() => synchronizeCampaign(item.campaign!)}
+                          disabled={syncingCampaignId === item.campaign.id}
+                          className="w-full rounded-lg bg-[#003781] px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                        >
+                          {syncingCampaignId === item.campaign.id
+                            ? 'Sincronizzazione…'
+                            : 'Sincronizza dati già caricati'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => prepareImport(item.importKind)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#003781] hover:bg-slate-50"
+                      >
+                        Prepara caricamento {item.importLabel}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section id="import-upload" className="bg-white border border-slate-200 rounded-lg overflow-hidden scroll-mt-4">
         <div className="p-5 border-b border-slate-200 flex items-center gap-3">
           <div className="p-2 bg-blue-50 text-[#003781] rounded-lg">
             <FileSpreadsheet size={22} />
@@ -910,6 +1189,63 @@ function getAnalysisPreviewRows(analysis: ImportAnalysis): AnalysisPreviewRow[] 
       phone: task.phone,
     }));
   }).slice(0, 5);
+}
+
+function getCoveragePresentation(daysRemaining: number | null): {
+  label: string;
+  cardClass: string;
+  badgeClass: string;
+  messageClass: string;
+} {
+  if (daysRemaining === null) {
+    return {
+      label: 'Da caricare',
+      cardClass: 'border-red-200 bg-red-50/50',
+      badgeClass: 'bg-red-100 text-red-700',
+      messageClass: 'text-red-700',
+    };
+  }
+  if (daysRemaining < 0) {
+    return {
+      label: 'Scoperta',
+      cardClass: 'border-red-200 bg-red-50/50',
+      badgeClass: 'bg-red-100 text-red-700',
+      messageClass: 'text-red-700',
+    };
+  }
+  if (daysRemaining <= 7) {
+    return {
+      label: 'Urgente',
+      cardClass: 'border-red-200 bg-red-50/50',
+      badgeClass: 'bg-red-100 text-red-700',
+      messageClass: 'text-red-700',
+    };
+  }
+  if (daysRemaining <= 30) {
+    return {
+      label: 'Da pianificare',
+      cardClass: 'border-amber-200 bg-amber-50/50',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      messageClass: 'text-amber-700',
+    };
+  }
+  return {
+    label: 'Coperta',
+    cardClass: 'border-emerald-200 bg-emerald-50/40',
+    badgeClass: 'bg-emerald-100 text-emerald-700',
+    messageClass: 'text-emerald-700',
+  };
+}
+
+function describeCoverageDeadline(daysRemaining: number | null): string {
+  if (daysRemaining === null) return 'Carica i dati ora per attivare la copertura.';
+  if (daysRemaining < 0) {
+    const elapsedDays = Math.abs(daysRemaining);
+    return `Copertura terminata ${elapsedDays === 1 ? '1 giorno fa' : `${elapsedDays} giorni fa`}.`;
+  }
+  if (daysRemaining === 0) return 'Per non restare scoperto, carica i dati oggi.';
+  if (daysRemaining === 1) return 'Per non restare scoperto, carica entro 1 giorno.';
+  return `Per non restare scoperto, carica entro ${daysRemaining} giorni.`;
 }
 
 function formatDateForDisplay(value: string): string {

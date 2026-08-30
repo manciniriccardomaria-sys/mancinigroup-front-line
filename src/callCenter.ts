@@ -327,9 +327,9 @@ export async function parseClientWorkbook(
 
 export async function importCallTasks(parsed: ParsedImport): Promise<ImportResult> {
   const validRecordCount = parsed.kind === 'newClients'
-    ? parsed.newClients?.length || 0
+    ? parsed.newClients?.length ?? parsed.tasks.length
     : parsed.kind === 'expirations'
-      ? parsed.expirationRecords?.length || 0
+      ? parsed.expirationRecords?.length ?? parsed.tasks.length
       : parsed.tasks.length;
   if (parsed.rowCount > 0 && validRecordCount === 0) {
     throw new Error(
