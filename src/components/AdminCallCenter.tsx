@@ -586,7 +586,8 @@ export default function AdminCallCenter() {
         <p className="text-xs text-slate-500 mt-2 max-w-4xl">
           Effettuate include ogni chiamata con un esito registrato, anche da richiamare,
           non raggiungibile, non gradito e gli altri esiti. Possibili include le chiamate
-          entrate nella finestra operativa dal {formatDate(CALL_TRACKING_START_DATE)} a oggi.
+          entrate nella finestra operativa dalla data di inizio mostrata per ogni campagna,
+          e comunque non prima del {formatDate(CALL_TRACKING_START_DATE)}.
         </p>
 
         <div className="mt-4 space-y-3">
