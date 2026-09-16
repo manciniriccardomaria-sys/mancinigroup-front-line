@@ -99,6 +99,7 @@ export type CallTask = {
 export type NewClientRecord = {
   id: string;
   clientName: string;
+  fiscalCode: string;
   phone: string;
   sourceCode: string;
   sourceName: string;
@@ -107,6 +108,8 @@ export type NewClientRecord = {
   coverages: string;
   birthDate: string;
   relationshipStartDate: string;
+  dedupeKey: string;
+  fallbackDedupeKey: string;
   sourceFingerprint: string;
   importedAt?: unknown;
   createdAt?: unknown;
@@ -138,6 +141,7 @@ export type ParsedImport = {
   sheetName: string;
   rowCount: number;
   skippedRows: number;
+  duplicateRows?: number;
   tasks: Array<Omit<CallTask, 'status' | 'id'> & { id: string }>;
   columnMappings?: ImportColumnMapping[];
   mappingWarnings?: string[];
@@ -149,6 +153,7 @@ export type ImportResult = {
   created: number;
   updated: number;
   unchanged: number;
+  excludedRecoveredWinback: number;
   skippedRows: number;
   totalRows: number;
   generatedTasks: number;
@@ -167,7 +172,7 @@ type WorksheetLike = {
 };
 
 type NewClientColumns = Record<
-  keyof typeof CLIENT_IMPORT_CONFIG.newClients.columns,
+  typeof NEW_CLIENT_HEADER_COLUMNS[number]['field'],
   string
 >;
 type ExpirationColumns = Record<
@@ -204,6 +209,7 @@ const WINBACK_COLUMN_LABELS: Record<keyof WinbackColumns, string> = {
   policyNumber: 'Numero polizza',
   source: 'Fonte',
   lastGrossPremium: 'Ultimo premio lordo',
+  premiumFrequency: 'Frequenza premio (Fr.)',
   exitDate: 'Data uscita',
   vehiclePlate: 'Targa',
   phone: 'Cellulare',
@@ -273,7 +279,6 @@ export async function parseClientWorkbook(
       }
 
       newClients.push(client);
-      tasks.push(...buildCampaignTasksForClient(client, activeNewClientCampaigns));
       continue;
     }
 
@@ -311,16 +316,26 @@ export async function parseClientWorkbook(
     tasks.push(...generated);
   }
 
+  const deduplicatedNewClients = kind === 'newClients'
+    ? dedupeNewClientRecords(newClients)
+    : { records: newClients, duplicateRows: 0 };
+  if (kind === 'newClients') {
+    tasks.push(...deduplicatedNewClients.records.flatMap(client =>
+      buildCampaignTasksForClient(client, activeNewClientCampaigns)
+    ));
+  }
+
   return {
     kind,
     fileName: file.name,
     sheetName: worksheet.name || requestedSheetName,
     rowCount: Math.max(0, worksheet.rowCount - 1),
     skippedRows,
+    duplicateRows: deduplicatedNewClients.duplicateRows,
     tasks,
     columnMappings: columnResolution?.mappings,
     mappingWarnings: columnResolution?.warnings,
-    ...(kind === 'newClients' ? { newClients } : {}),
+    ...(kind === 'newClients' ? { newClients: deduplicatedNewClients.records } : {}),
     ...(kind === 'expirations' ? { expirationRecords } : {}),
   };
 }
@@ -352,6 +367,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       {
         id: item.id,
         fingerprint: item.data().sourceFingerprint as string | undefined,
+        task: item.data() as Partial<CallTask>,
       },
     ])
   );
@@ -361,9 +377,23 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       {
         id: item.id,
         fingerprint: item.data().sourceFingerprint as string | undefined,
+        task: item.data() as Partial<CallTask>,
       },
     ])
   );
+  const recoveredWinbackEvents = new Map<string, string>();
+  if (parsed.kind === 'winback') {
+    for (const item of existingSnapshot.docs) {
+      const task = item.data() as Partial<CallTask>;
+      if (task.status !== 'ripreso') continue;
+
+      const relationshipKey = getWinbackRelationshipKey(task);
+      const previousEventDate = recoveredWinbackEvents.get(relationshipKey);
+      if (!previousEventDate || (task.eventDate || '') < previousEventDate) {
+        recoveredWinbackEvents.set(relationshipKey, task.eventDate || '');
+      }
+    }
+  }
   const shouldPruneOpenTasks = parsed.kind === 'expirations';
   const nextTaskIds = shouldPruneOpenTasks
     ? new Set(parsed.tasks.map(task => task.id))
@@ -375,8 +405,11 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
   let created = 0;
   let updated = 0;
   let unchanged = 0;
+  let excludedRecoveredWinback = 0;
+  let excludedParsedWinback = 0;
   let batch = writeBatch(db);
   let batchSize = 0;
+  const removedRecoveredTaskIds = new Set<string>();
 
   const commitBatch = async () => {
     if (batchSize === 0) return;
@@ -398,9 +431,53 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     }
   }
 
+  if (parsed.kind === 'winback') {
+    for (const item of existingSnapshot.docs) {
+      const task = item.data() as Partial<CallTask>;
+      const recoveredEventDate = recoveredWinbackEvents.get(
+        getWinbackRelationshipKey(task),
+      );
+      if (
+        task.status !== 'da_chiamare' ||
+        !recoveredEventDate ||
+        !task.eventDate ||
+        task.eventDate <= recoveredEventDate
+      ) continue;
+
+      batch.delete(doc(db, 'call_tasks', item.id));
+      batchSize += 1;
+      excludedRecoveredWinback += 1;
+      removedRecoveredTaskIds.add(item.id);
+      if (batchSize >= 400) await commitBatch();
+    }
+  }
+
   for (const task of parsed.tasks) {
     const existingTask = existingById.get(task.id) ||
       existingByLogicalKey.get(getTaskLogicalKey(task));
+    const recoveredEventDate = task.importType === 'winback'
+      ? recoveredWinbackEvents.get(getWinbackRelationshipKey(task))
+      : undefined;
+    if (recoveredEventDate && task.eventDate > recoveredEventDate) {
+      excludedParsedWinback += 1;
+      if (!existingTask || !removedRecoveredTaskIds.has(existingTask.id)) {
+        excludedRecoveredWinback += 1;
+      }
+      continue;
+    }
+
+    // Una chiamata gia' lavorata conserva integralmente date e contenuti del
+    // proprio ciclo. I ricaricamenti possono aggiornare soltanto le chiamate
+    // ancora in stato "Da chiamare".
+    if (
+      task.importType === 'winback' &&
+      existingTask &&
+      existingTask.task.status !== 'da_chiamare'
+    ) {
+      unchanged += 1;
+      continue;
+    }
+
     const previousFingerprint = existingTask?.fingerprint;
 
     if (previousFingerprint === task.sourceFingerprint) {
@@ -435,9 +512,10 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     created,
     updated,
     unchanged,
+    excludedRecoveredWinback,
     skippedRows: parsed.skippedRows,
     totalRows: parsed.rowCount,
-    generatedTasks: parsed.tasks.length,
+    generatedTasks: parsed.tasks.length - excludedParsedWinback,
     storedClients,
     storedExpirations,
   };
@@ -447,6 +525,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
     fileName: parsed.fileName,
     sheetName: parsed.sheetName,
     ...result,
+    duplicateRows: parsed.duplicateRows || 0,
     importedAt: serverTimestamp(),
   });
 
@@ -461,6 +540,7 @@ export async function syncCampaignTasks(
       created: 0,
       updated: 0,
       unchanged: 0,
+      excludedRecoveredWinback: 0,
       skippedRows: 0,
       totalRows: 0,
       generatedTasks: 0,
@@ -494,8 +574,9 @@ export async function syncCampaignTasks(
     id: item.id,
     ...item.data(),
   } as NewClientRecord));
+  const deduplicatedClients = dedupeNewClientRecords(clients).records;
 
-  const tasks = clients.flatMap(client =>
+  const tasks = deduplicatedClients.flatMap(client =>
     buildCampaignTasksForClient(client, [campaign])
   );
   await pruneOpenCampaignTasks(campaign.id, tasks);
@@ -507,7 +588,7 @@ export async function syncCampaignTasks(
     kind: 'newClients',
     fileName: 'Clienti memorizzati',
     sheetName: CLIENT_IMPORT_CONFIG.newClients.sheetName,
-    rowCount: clients.length,
+    rowCount: deduplicatedClients.length,
     skippedRows: 0,
     tasks,
   });
@@ -518,6 +599,7 @@ function createEmptyImportResult(totalRows: number): ImportResult {
     created: 0,
     updated: 0,
     unchanged: 0,
+    excludedRecoveredWinback: 0,
     skippedRows: 0,
     totalRows,
     generatedTasks: 0,
@@ -565,12 +647,13 @@ async function importNewClientRecords(
   clients: NewClientRecord[],
 ): Promise<number> {
   const existingSnapshot = await getDocs(collection(db, 'new_clients'));
-  const existingById = new Map(
-    existingSnapshot.docs.map(item => [
-      item.id,
-      item.data().sourceFingerprint as string | undefined,
-    ])
-  );
+  const existingClients = existingSnapshot.docs.map(item => ({
+    id: item.id,
+    record: {
+      id: item.id,
+      ...item.data(),
+    } as NewClientRecord,
+  }));
 
   let storedClients = 0;
   let batch = writeBatch(db);
@@ -584,18 +667,29 @@ async function importNewClientRecords(
   };
 
   for (const client of clients) {
-    const previousFingerprint = existingById.get(client.id);
+    const existingClient = existingClients.find(item =>
+      areSameNewClient(item.record, client)
+    );
+    const targetId = existingClient?.id || client.id;
+    const storedClient = {
+      ...client,
+      id: targetId,
+    };
+    const previousFingerprint = existingClient?.record.sourceFingerprint;
     if (previousFingerprint === client.sourceFingerprint) continue;
 
-    batch.set(doc(db, 'new_clients', client.id), {
-      ...client,
+    batch.set(doc(db, 'new_clients', targetId), {
+      ...storedClient,
       importedAt: serverTimestamp(),
-      ...(previousFingerprint === undefined
+      ...(existingClient === undefined
         ? { createdAt: serverTimestamp() }
         : {}),
     }, { merge: true });
     batchSize += 1;
     storedClients += 1;
+
+    if (existingClient) existingClient.record = storedClient;
+    else existingClients.push({ id: targetId, record: storedClient });
 
     if (batchSize >= 400) await commitBatch();
   }
@@ -702,15 +796,25 @@ function getTaskLogicalKey(task: Partial<CallTask>): string {
       task.importType,
       task.policyNumber,
       task.exitDate,
+      task.eventDate,
     ].join('|');
   }
 
   return [
     task.importType,
     task.campaignId,
-    task.clientName,
-    task.birthDate,
-    task.sourceCode,
+    getNewClientFallbackDedupeKey({
+      clientName: task.clientName || '',
+      birthDate: task.birthDate || '',
+      sourceCode: task.sourceCode || '',
+    }),
+  ].join('|');
+}
+
+function getWinbackRelationshipKey(task: Partial<CallTask>): string {
+  return [
+    task.policyNumber || '',
+    task.exitDate || '',
   ].join('|');
 }
 
@@ -725,6 +829,18 @@ export function getTaskEffectiveDate(task: CallTask): string {
   return task.status === 'da_richiamare' && task.callbackDate
     ? task.callbackDate
     : task.dueDate;
+}
+
+export function getTaskCategoryLabel(task: CallTask): string {
+  if (task.category !== 'winback') return task.categoryLabel;
+
+  const exitYear = Number(task.exitDate?.slice(0, 4));
+  const eventYear = Number(task.eventDate?.slice(0, 4));
+  const yearsSinceExit = eventYear - exitYear;
+
+  if (yearsSinceExit === 1) return 'Winback · Uscito 1 anno fa';
+  if (yearsSinceExit === 2) return 'Winback · Uscito 2 anni fa';
+  return task.categoryLabel || 'Winback';
 }
 
 export function isTaskClosed(status: CallStatusId): boolean {
@@ -789,15 +905,13 @@ function buildNewClientRecord(
 
   if (!clientName || !source.code || !startDate) return undefined;
 
-  const identity = [
-    'new-client',
+  return createNewClientRecord({
     clientName,
-    birthDate ? format(birthDate, DATE_FORMAT) : '',
-    source.code,
-  ].join('|');
-  const baseClient = {
-    id: `new_client_${stableHash(identity)}`,
-    clientName,
+    fiscalCode: normalizeTaxIdentifier(getOptionalCellText(
+      worksheet,
+      rowNumber,
+      columns.fiscalCode,
+    )),
     phone: getCellPhone(worksheet, rowNumber, columns.phone),
     sourceCode: source.code,
     sourceName: source.name,
@@ -806,12 +920,111 @@ function buildNewClientRecord(
     coverages: getCellText(worksheet, rowNumber, columns.coverages),
     birthDate: birthDate ? format(birthDate, DATE_FORMAT) : '',
     relationshipStartDate: format(startDate, DATE_FORMAT),
+  });
+}
+
+function createNewClientRecord(
+  values: Omit<
+    NewClientRecord,
+    'id' | 'dedupeKey' | 'fallbackDedupeKey' | 'sourceFingerprint' |
+    'importedAt' | 'createdAt'
+  >,
+): NewClientRecord {
+  const fallbackDedupeKey = getNewClientFallbackDedupeKey(values);
+  const dedupeKey = values.fiscalCode
+    ? `tax|${normalizeTaxIdentifier(values.fiscalCode)}`
+    : fallbackDedupeKey;
+  const semanticValues = {
+    ...values,
+    fiscalCode: normalizeTaxIdentifier(values.fiscalCode),
+    dedupeKey,
+    fallbackDedupeKey,
   };
 
   return {
-    ...baseClient,
-    sourceFingerprint: stableHash(JSON.stringify(baseClient)),
+    id: `new_client_${stableHash(dedupeKey)}`,
+    ...semanticValues,
+    sourceFingerprint: stableHash(JSON.stringify(semanticValues)),
   };
+}
+
+function dedupeNewClientRecords(
+  clients: NewClientRecord[],
+): { records: NewClientRecord[]; duplicateRows: number } {
+  const records: NewClientRecord[] = [];
+  let duplicateRows = 0;
+
+  for (const client of clients) {
+    const existingIndex = records.findIndex(record =>
+      areSameNewClient(record, client)
+    );
+    if (existingIndex < 0) {
+      records.push(client);
+      continue;
+    }
+
+    records[existingIndex] = mergeNewClientRecords(records[existingIndex], client);
+    duplicateRows += 1;
+  }
+
+  return { records, duplicateRows };
+}
+
+function areSameNewClient(
+  first: Partial<NewClientRecord>,
+  second: Partial<NewClientRecord>,
+): boolean {
+  const firstFiscalCode = normalizeTaxIdentifier(first.fiscalCode || '');
+  const secondFiscalCode = normalizeTaxIdentifier(second.fiscalCode || '');
+
+  if (firstFiscalCode && secondFiscalCode) {
+    return firstFiscalCode === secondFiscalCode;
+  }
+
+  return getNewClientFallbackDedupeKey(first) ===
+    getNewClientFallbackDedupeKey(second);
+}
+
+function mergeNewClientRecords(
+  previous: NewClientRecord,
+  incoming: NewClientRecord,
+): NewClientRecord {
+  const relationshipStartDate = [
+    previous.relationshipStartDate,
+    incoming.relationshipStartDate,
+  ].filter(Boolean).sort()[0] || '';
+
+  return createNewClientRecord({
+    clientName: incoming.clientName || previous.clientName,
+    fiscalCode: incoming.fiscalCode || previous.fiscalCode || '',
+    phone: incoming.phone || previous.phone,
+    sourceCode: incoming.sourceCode || previous.sourceCode,
+    sourceName: incoming.sourceName || previous.sourceName,
+    sourceOwnerEmail: incoming.sourceOwnerEmail || previous.sourceOwnerEmail,
+    sourceOwnerName: incoming.sourceOwnerName || previous.sourceOwnerName,
+    coverages: incoming.coverages || previous.coverages,
+    birthDate: incoming.birthDate || previous.birthDate,
+    relationshipStartDate,
+  });
+}
+
+function getNewClientFallbackDedupeKey(
+  client: Pick<Partial<NewClientRecord>, 'clientName' | 'birthDate' | 'sourceCode'>,
+): string {
+  return [
+    'person',
+    normalizePersonName(client.clientName || ''),
+    client.birthDate || '',
+    client.sourceCode || '',
+  ].join('|');
+}
+
+function normalizePersonName(value: string): string {
+  return normalizeText(value).replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizeTaxIdentifier(value: string): string {
+  return normalizeText(value).replace(/[^A-Z0-9]/g, '');
 }
 
 function buildCampaignTasksForClient(
@@ -832,9 +1045,7 @@ function buildCampaignTasksForClient(
     }
     const identity = [
       'campaign',
-      client.clientName,
-      client.birthDate,
-      client.sourceCode,
+      getNewClientFallbackDedupeKey(client),
       campaign.id,
     ].join('|');
     const id = `campaign_${stableHash(identity)}`;
@@ -855,6 +1066,7 @@ function buildCampaignTasksForClient(
         ownerName: client.sourceOwnerName,
       },
       coverages: client.coverages,
+      fiscalCode: client.fiscalCode || '',
       birthDate: client.birthDate,
       relationshipStartDate: client.relationshipStartDate,
       eventDate: dueDate,
@@ -919,7 +1131,7 @@ function buildAnnualExpirationRecord(
     worksheet,
     rowNumber,
     columns.expirationType,
-  ).toUpperCase() || 'A';
+  ).toUpperCase();
   const eventDate = getCellDate(worksheet, rowNumber, columns.nextExpirationDate);
 
   if (!clientName || !source.code || !eventDate || (!policyNumber && !fiscalCode)) {
@@ -960,6 +1172,10 @@ function buildAnnualExpirationCampaignTasks(
   record: ExpirationRecord,
   campaigns: Campaign[],
 ): ParsedImport['tasks'] {
+  if (!isExplicitAnnualExpiration(record.expirationType)) {
+    return [];
+  }
+
   return campaigns.filter(isAnnualExpirationCampaign).map(campaign => {
     const daysBeforeExpiration = campaign.daysBeforeExpiration || 0;
     if (daysBeforeExpiration < 1) return undefined;
@@ -1039,6 +1255,19 @@ export function getCampaignKind(campaign: Campaign): CampaignKind {
   return campaign.campaignKind || 'newClients';
 }
 
+export function isCampaignTaskEligible(
+  task: Pick<CallTask, 'category' | 'expirationType'>,
+  campaign: Campaign,
+): boolean {
+  return task.category !== 'campagna' ||
+    getCampaignKind(campaign) !== 'annualExpirations' ||
+    isExplicitAnnualExpiration(task.expirationType);
+}
+
+function isExplicitAnnualExpiration(expirationType: string | undefined): boolean {
+  return (expirationType || '').trim().toUpperCase() === 'A';
+}
+
 function isNewClientCampaign(campaign: Campaign): boolean {
   return getCampaignKind(campaign) === 'newClients';
 }
@@ -1094,10 +1323,18 @@ function buildWinbackTask(
   const policyNumber = getCellText(worksheet, rowNumber, columns.policyNumber);
   const source = resolveSource(getCellText(worksheet, rowNumber, columns.source));
   const exitDate = getCellDate(worksheet, rowNumber, columns.exitDate);
+  const lastGrossPremium = getAnnualizedWinbackPremium(
+    worksheet,
+    rowNumber,
+    columns.lastGrossPremium,
+    columns.premiumFrequency,
+  );
 
   if (!clientName || !policyNumber || !source.code || !exitDate) return undefined;
 
-  const eventDate = addYears(exitDate, 1);
+  const eventDate = getNextEligibleWinbackAnniversary(exitDate);
+  if (!eventDate) return undefined;
+
   const dueDate = adjustWeekendToMonday(
     subDays(eventDate, config.scheduleRule.reminderDays)
   );
@@ -1105,6 +1342,7 @@ function buildWinbackTask(
     'winback',
     policyNumber,
     format(exitDate, DATE_FORMAT),
+    format(eventDate, DATE_FORMAT),
   ].join('|');
 
   return createTask({
@@ -1118,14 +1356,31 @@ function buildWinbackTask(
     policyNumber,
     vehiclePlate: getCellText(worksheet, rowNumber, columns.vehiclePlate),
     exitDate: format(exitDate, DATE_FORMAT),
-    lastGrossPremium: getCellText(
-      worksheet,
-      rowNumber,
-      columns.lastGrossPremium,
-    ),
+    lastGrossPremium,
     eventDate: format(eventDate, DATE_FORMAT),
     dueDate: format(dueDate, DATE_FORMAT),
   });
+}
+
+export function getNextEligibleWinbackAnniversary(
+  exitDate: Date,
+  referenceDate = parseISO(getItalyDate()),
+): Date | undefined {
+  const referenceYear = referenceDate.getFullYear();
+  let anniversaryNumber = referenceYear - exitDate.getFullYear();
+  let eventDate = addYears(exitDate, anniversaryNumber);
+
+  // Se l'anniversario di quest'anno e' gia' trascorso, prepara il ciclo
+  // dell'anno successivo. Il giorno dell'anniversario resta ancora lavorabile.
+  if (format(eventDate, DATE_FORMAT) < format(referenceDate, DATE_FORMAT)) {
+    anniversaryNumber += 1;
+    eventDate = addYears(exitDate, anniversaryNumber);
+  }
+
+  const isEligible = CLIENT_IMPORT_CONFIG.winback.scheduleRule.anniversaryYears
+    .some(year => year === anniversaryNumber);
+
+  return isEligible ? eventDate : undefined;
 }
 
 function createTask(
@@ -1175,6 +1430,53 @@ function getCellText(
   column: string,
 ): string {
   return worksheet.getCell(rowNumber, columnToNumber(column)).text.trim();
+}
+
+function getAnnualizedWinbackPremium(
+  worksheet: WorksheetLike,
+  rowNumber: number,
+  premiumColumn: string,
+  frequencyColumn: string,
+): string {
+  const rawPremium = getCellText(worksheet, rowNumber, premiumColumn);
+  if (!rawPremium) return '';
+
+  const frequency = normalizeText(
+    getCellText(worksheet, rowNumber, frequencyColumn),
+  );
+  if (frequency !== 'S') return rawPremium;
+
+  const numericPremium = getCellNumber(
+    worksheet,
+    rowNumber,
+    premiumColumn,
+  );
+  if (numericPremium === undefined) return rawPremium;
+
+  return new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numericPremium * 2);
+}
+
+function getCellNumber(
+  worksheet: WorksheetLike,
+  rowNumber: number,
+  column: string,
+): number | undefined {
+  const cell = worksheet.getCell(rowNumber, columnToNumber(column));
+  if (typeof cell.value === 'number' && Number.isFinite(cell.value)) {
+    return cell.value;
+  }
+
+  const cleaned = cell.text.trim()
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  if (!cleaned) return undefined;
+
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function getOptionalCellText(

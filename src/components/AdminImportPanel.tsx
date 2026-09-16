@@ -102,7 +102,7 @@ const IMPORT_OPTIONS: Array<{
   {
     kind: 'winback',
     title: 'Winback',
-    description: 'Importa uno o più mesi e calcola il richiamo 10 giorni prima dell’anniversario.',
+    description: 'Importa le uscite del primo e del secondo anno: il richiamo viene calcolato 15 giorni prima del prossimo anniversario. Entro il 15 di ogni mese carica i due file del mese successivo.',
   },
   {
     kind: 'customerClusters',
@@ -459,7 +459,9 @@ export default function AdminImportPanel() {
           created: 0,
           updated: 0,
           unchanged: 0,
+          excludedRecoveredWinback: 0,
           skippedRows: 0,
+          duplicateRows: 0,
           storedClients: 0,
           storedExpirations: 0,
         };
@@ -469,7 +471,9 @@ export default function AdminImportPanel() {
           totals.created += result.created;
           totals.updated += result.updated;
           totals.unchanged += result.unchanged;
+          totals.excludedRecoveredWinback += result.excludedRecoveredWinback;
           totals.skippedRows += result.skippedRows;
+          totals.duplicateRows += parsed.duplicateRows || 0;
           totals.storedClients += result.storedClients;
           totals.storedExpirations += result.storedExpirations;
         }
@@ -478,6 +482,9 @@ export default function AdminImportPanel() {
           `${totals.created} nuove`,
           `${totals.updated} aggiornate`,
           `${totals.unchanged} invariate`,
+          ...(totals.excludedRecoveredWinback > 0
+            ? [`${totals.excludedRecoveredWinback} escluse perché già riprese`]
+            : []),
           ...(importAnalysis.kind === 'newClients'
             ? [`${totals.storedClients} clienti memorizzati o aggiornati`]
             : []),
@@ -485,6 +492,9 @@ export default function AdminImportPanel() {
             ? [`${totals.storedExpirations} scadenze memorizzate o aggiornate`]
             : []),
           `${totals.skippedRows} righe saltate`,
+          ...(totals.duplicateRows > 0
+            ? [`${totals.duplicateRows} duplicati interni ignorati`]
+            : []),
         ].join(' · '));
       }
 
@@ -967,9 +977,10 @@ export default function AdminImportPanel() {
 
             {importAnalysis && (
               <div className="space-y-5">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <ImportMetric label="Righe lette" value={getAnalysisRowCount(importAnalysis)} />
                   <ImportMetric label="Righe valide" value={getAnalysisValidCount(importAnalysis)} />
+                  <ImportMetric label="Duplicati" value={getAnalysisDuplicateCount(importAnalysis)} />
                   <ImportMetric label="Righe saltate" value={getAnalysisSkippedCount(importAnalysis)} />
                 </div>
 
@@ -1145,6 +1156,15 @@ function getAnalysisSkippedCount(analysis: ImportAnalysis): number {
   return analysis.kind === 'customerClusters'
     ? analysis.parsed.skippedRows
     : analysis.parsed.reduce((total, parsed) => total + parsed.skippedRows, 0);
+}
+
+function getAnalysisDuplicateCount(analysis: ImportAnalysis): number {
+  return analysis.kind === 'customerClusters'
+    ? analysis.parsed.duplicateRows
+    : analysis.parsed.reduce(
+        (total, parsed) => total + (parsed.duplicateRows || 0),
+        0,
+      );
 }
 
 function hasInvalidAnalysis(analysis: ImportAnalysis): boolean {

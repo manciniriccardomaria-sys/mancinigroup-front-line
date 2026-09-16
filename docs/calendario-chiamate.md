@@ -27,7 +27,12 @@ Lo stato iniziale e' sempre `Da chiamare`. Tutti gli stati restano modificabili:
 - Da richiamare
 - Non raggiungibile
 - Cambio/Rottamaz. macchina
+- Non gradito
+- Ripreso / tornato cliente
 - Cliente perso
+
+Nel Winback, `Ripreso / tornato cliente` esclude automaticamente il secondo
+anniversario della stessa polizza e della stessa uscita.
 
 Quando viene scelto `Da richiamare`, la nuova data di chiamata e' obbligatoria.
 La cronologia conserva autore, data e ora di ogni variazione.

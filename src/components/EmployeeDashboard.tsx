@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { format, parseISO, subDays } from 'date-fns';
+import { it } from 'date-fns/locale';
 import { auth, db } from '../firebase';
 import { collection, doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import {
@@ -22,6 +24,7 @@ import {
   Calendar, 
   CalendarDays,
   ClipboardList,
+  History,
   Target,
   User as UserIcon,
   AlertTriangle,
@@ -31,6 +34,7 @@ import EmployeeCallCalendar from './EmployeeCallCalendar';
 import {
   Campaign,
   CallTask,
+  isCampaignTaskEligible,
   isTaskActionable,
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
@@ -48,6 +52,13 @@ export default function EmployeeDashboard() {
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
   const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('report');
+  const [showReportHistory, setShowReportHistory] = useState(false);
+  const [historyDate, setHistoryDate] = useState(() =>
+    format(subDays(parseISO(getItalyDate()), 1), 'yyyy-MM-dd')
+  );
+  const [historyReport, setHistoryReport] = useState<DailyReport | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const {
     categories,
     sections,
@@ -92,14 +103,7 @@ export default function EmployeeDashboard() {
           const storedReport = docSnap.exists()
             ? docSnap.data() as Partial<DailyReport>
             : {};
-          const normalizedReport = {
-            ...initialReport,
-            ...storedReport,
-            values: storedReport.values || {},
-            emissMotorSe: storedReport.emissMotorSe ?? storedReport.emissSe ?? 0,
-            sinistriRetail: storedReport.sinistriRetail ?? storedReport.sinistriRamiVari ?? 0,
-            contattiProtection: storedReport.contattiProtection ?? storedReport.contattiVita ?? 0,
-          };
+          const normalizedReport = normalizeDailyReport(initialReport, storedReport);
 
           setReport(normalizedReport);
           setError('');
@@ -125,6 +129,40 @@ export default function EmployeeDashboard() {
       unsubscribe?.();
     };
   }, [today]);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!showReportHistory || !user || !historyDate) {
+      setHistoryLoading(false);
+      return;
+    }
+
+    const initialReport = createInitialReport(
+      user.uid,
+      user.displayName || 'Utente',
+      historyDate,
+    );
+    const reportRef = doc(db, 'daily_reports', `${user.uid}_${historyDate}`);
+    setHistoryLoading(true);
+    setHistoryError('');
+
+    return onSnapshot(reportRef, snapshot => {
+      setHistoryReport(snapshot.exists()
+        ? normalizeDailyReport(
+            initialReport,
+            snapshot.data() as Partial<DailyReport>,
+          )
+        : null
+      );
+      setHistoryLoading(false);
+      setHistoryError('');
+    }, snapshotError => {
+      console.error('Error loading report history:', snapshotError);
+      setHistoryReport(null);
+      setHistoryLoading(false);
+      setHistoryError('Non è stato possibile caricare lo storico della giornata selezionata.');
+    });
+  }, [showReportHistory, historyDate]);
 
   useEffect(() => onSnapshot(
     doc(db, 'daily_objectives', 'current'),
@@ -174,17 +212,20 @@ export default function EmployeeDashboard() {
   const calendarNotificationCount = useMemo(() => {
     const ownSourceCodes = employee?.sourceCodes || [];
     const currentUid = auth.currentUser?.uid || '';
-    const activeCampaignIds = new Set(
+    const activeCampaignsById = new Map(
       campaigns
         .filter(campaign => campaign.active)
-        .map(campaign => campaign.id)
+        .map(campaign => [campaign.id, campaign])
     );
 
     return callTasks.filter(task => {
+      const campaign = task.campaignId
+        ? activeCampaignsById.get(task.campaignId)
+        : undefined;
       const isEnabled = isCallCategoryEnabled(task.category) &&
         (
           task.category !== 'campagna' ||
-          Boolean(task.campaignId && activeCampaignIds.has(task.campaignId))
+          Boolean(campaign && isCampaignTaskEligible(task, campaign))
         );
       const isOwnOrAssigned = ownSourceCodes.some(code => code === task.sourceCode) ||
         task.assignedToUid === currentUid;
@@ -328,7 +369,7 @@ export default function EmployeeDashboard() {
 
         {selectedView === 'report' && (
           <section className="space-y-3">
-            {objectives.enabled && report && (
+            {!showReportHistory && objectives.enabled && report && (
               <DailyObjectivesPanel
                 objectives={objectives}
                 report={report}
@@ -336,85 +377,150 @@ export default function EmployeeDashboard() {
               />
             )}
 
-            <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+            <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold text-slate-800">Rendicontazione giornaliera</h2>
+                <h2 className="font-bold text-slate-800">
+                  {showReportHistory ? 'Storico attività svolte' : 'Rendicontazione giornaliera'}
+                </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Ogni variazione viene salvata automaticamente.
+                  {showReportHistory
+                    ? 'Consulta i report delle giornate precedenti in sola lettura.'
+                    : 'Ogni variazione viene salvata automaticamente.'}
                 </p>
               </div>
-              <span className={`text-xs font-bold whitespace-nowrap ${
-                saving ? 'text-blue-600 animate-pulse' : 'text-emerald-600'
-              }`}>
-                {saving ? 'Salvataggio...' : 'Dati salvati'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
-              {sections.map(section => (
-                <section
-                  key={section.id}
-                  className="bg-white border border-slate-200 rounded-lg overflow-hidden"
+              <div className="flex flex-wrap items-center gap-2">
+                {!showReportHistory && (
+                  <span className={`text-xs font-bold whitespace-nowrap ${
+                    saving ? 'text-blue-600 animate-pulse' : 'text-emerald-600'
+                  }`}>
+                    {saving ? 'Salvataggio...' : 'Dati salvati'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowReportHistory(previous => !previous)}
+                  className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border ${
+                    showReportHistory
+                      ? 'bg-[#003781] border-[#003781] text-white'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
-                  <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-200 min-h-11 flex items-center">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase">
-                      {section.title}
-                    </h3>
-                  </div>
-
-                  <div className="divide-y divide-slate-100">
-                    {section.categories.map(cat => {
-                      const CategoryIcon = getReportCategoryIcon(cat.iconKey);
-                      const value = report
-                        ? getReportCategoryValue(report, cat.id)
-                        : 0;
-
-                      return (
-                        <div
-                          key={cat.id}
-                          className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${cat.color}`}>
-                              <CategoryIcon size={17} />
-                            </div>
-                            <span className="block text-sm font-medium text-slate-700 leading-tight">
-                              {cat.label}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
-                            <button
-                              onClick={() => updateCount(cat.id, -1)}
-                              className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
-                              disabled={value === 0}
-                              title={`Diminuisci ${cat.label}`}
-                            >
-                              <Minus size={16} />
-                            </button>
-                            <div className="w-8 text-center font-bold text-base text-slate-800">
-                              {value}
-                            </div>
-                            <button
-                              onClick={() => updateCount(cat.id, 1)}
-                              className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
-                              title={`Aumenta ${cat.label}`}
-                            >
-                              <Plus size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-              {sections.length === 0 && (
-                <div className="lg:col-span-3 bg-white border border-dashed border-slate-300 rounded-lg py-12 text-center text-slate-500">
-                  Nessuna voce di rendicontazione configurata.
-                </div>
-              )}
+                  <History size={16} />
+                  {showReportHistory ? 'Torna a oggi' : 'Vedi storico'}
+                </button>
+              </div>
             </div>
+
+            {showReportHistory ? (
+              <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                  <div>
+                    <label htmlFor="report-history-date" className="block text-xs font-bold text-slate-600 mb-1.5">
+                      Seleziona la giornata
+                    </label>
+                    <input
+                      id="report-history-date"
+                      type="date"
+                      value={historyDate}
+                      max={today}
+                      onChange={event => {
+                        if (event.target.value) setHistoryDate(event.target.value);
+                      }}
+                      className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white"
+                    />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 capitalize">
+                    {format(parseISO(historyDate), 'EEEE d MMMM yyyy', { locale: it })}
+                  </p>
+                </div>
+
+                {historyLoading ? (
+                  <div className="py-14 text-center text-sm text-slate-500">
+                    Caricamento storico...
+                  </div>
+                ) : historyError ? (
+                  <div className="m-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm">
+                    {historyError}
+                  </div>
+                ) : historyReport ? (
+                  <HistoricalActivities report={historyReport} categories={categories} />
+                ) : (
+                  <div className="py-14 px-4 text-center">
+                    <History size={28} className="mx-auto text-slate-300 mb-2" />
+                    <p className="font-bold text-slate-700">Nessuna attività registrata</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Non esiste un report per la giornata selezionata.
+                    </p>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+                {sections.map(section => (
+                  <section
+                    key={section.id}
+                    className="bg-white border border-slate-200 rounded-lg overflow-hidden"
+                  >
+                    <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-200 min-h-11 flex items-center">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase">
+                        {section.title}
+                      </h3>
+                    </div>
+
+                    <div className="divide-y divide-slate-100">
+                      {section.categories.map(cat => {
+                        const CategoryIcon = getReportCategoryIcon(cat.iconKey);
+                        const value = report
+                          ? getReportCategoryValue(report, cat.id)
+                          : 0;
+
+                        return (
+                          <div
+                            key={cat.id}
+                            className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${cat.color}`}>
+                                <CategoryIcon size={17} />
+                              </div>
+                              <span className="block text-sm font-medium text-slate-700 leading-tight">
+                                {cat.label}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+                              <button
+                                onClick={() => updateCount(cat.id, -1)}
+                                className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
+                                disabled={value === 0}
+                                title={`Diminuisci ${cat.label}`}
+                              >
+                                <Minus size={16} />
+                              </button>
+                              <div className="w-8 text-center font-bold text-base text-slate-800">
+                                {value}
+                              </div>
+                              <button
+                                onClick={() => updateCount(cat.id, 1)}
+                                className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
+                                title={`Aumenta ${cat.label}`}
+                              >
+                                <Plus size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+                {sections.length === 0 && (
+                  <div className="lg:col-span-3 bg-white border border-dashed border-slate-300 rounded-lg py-12 text-center text-slate-500">
+                    Nessuna voce di rendicontazione configurata.
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
       </main>
@@ -487,12 +593,89 @@ function DailyObjectivesPanel({
   );
 }
 
+function HistoricalActivities({
+  report,
+  categories,
+}: {
+  report: DailyReport;
+  categories: ReportCategory[];
+}) {
+  const activities = categories
+    .map(category => ({
+      category,
+      value: getReportCategoryValue(report, category.id),
+    }))
+    .filter(activity => activity.value > 0);
+  const total = activities.reduce((sum, activity) => sum + activity.value, 0);
+
+  if (activities.length === 0) {
+    return (
+      <div className="py-14 px-4 text-center">
+        <History size={28} className="mx-auto text-slate-300 mb-2" />
+        <p className="font-bold text-slate-700">Nessuna attività svolta</p>
+        <p className="text-xs text-slate-500 mt-1">
+          Il report della giornata è presente, ma non contiene attività registrate.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-slate-700">Attività registrate</p>
+        <span className="bg-blue-50 text-[#003781] px-3 py-1.5 rounded-lg text-xs font-black">
+          Totale {total}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+        {activities.map(({ category, value }) => {
+          const CategoryIcon = getReportCategoryIcon(category.iconKey);
+
+          return (
+            <div
+              key={category.id}
+              className="border border-slate-200 rounded-lg px-3 py-2.5 flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`p-1.5 rounded-md bg-slate-100 shrink-0 ${category.color}`}>
+                  <CategoryIcon size={17} />
+                </div>
+                <span className="text-sm font-medium text-slate-700 leading-tight">
+                  {category.label}
+                </span>
+              </div>
+              <span className="min-w-8 text-center text-base font-black text-slate-800">
+                {value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function createInitialReport(userId: string, userName: string, date: string): DailyReport {
   return {
     userId,
     userName,
     date,
     values: {},
+  };
+}
+
+function normalizeDailyReport(
+  initialReport: DailyReport,
+  storedReport: Partial<DailyReport>,
+): DailyReport {
+  return {
+    ...initialReport,
+    ...storedReport,
+    values: storedReport.values || {},
+    emissMotorSe: storedReport.emissMotorSe ?? storedReport.emissSe ?? 0,
+    sinistriRetail: storedReport.sinistriRetail ?? storedReport.sinistriRamiVari ?? 0,
+    contattiProtection: storedReport.contattiProtection ?? storedReport.contattiVita ?? 0,
   };
 }
 

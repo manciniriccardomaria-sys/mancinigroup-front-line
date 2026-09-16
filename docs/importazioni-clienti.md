@@ -9,6 +9,7 @@ L'amministratore seleziona sempre il tipo di caricamento dal menu, carica il
 file e avvia prima l'analisi. L'analisi non scrive dati e mostra:
 
 - foglio letto e numero di righe valide o saltate;
+- numero di duplicati interni ignorati;
 - intestazione effettivamente trovata e relativa colonna;
 - metodo di riconoscimento usato;
 - anteprima dei primi clienti.
@@ -29,6 +30,7 @@ sinonimi inventati.
 | --- | --- |
 | Nome e cognome | `Contraente` |
 | Fonte | `Fonte` |
+| Codice fiscale / P.IVA | `Cod.Fiscale / P.IVA` |
 | Data inizio rapporto | `Iniz. Rapp.` |
 | Data di nascita | `Nascita` |
 | Cellulare | `Cellulare` |
@@ -36,6 +38,11 @@ sinonimi inventati.
 
 Sono verificate due disposizioni dello stesso export: `R/Z/BC` e `U/AC/BF`
 per nascita, cellulare e coperture. Entrambe vengono risolte dalle intestazioni.
+
+I duplicati vengono riconosciuti prima tramite il valore normalizzato di
+`Cod.Fiscale / P.IVA`. Se il dato manca, si usa la combinazione di nome
+normalizzato, data di nascita e fonte. Le righe duplicate nello stesso file
+vengono unite prima di generare le chiamate e sono indicate nell'anteprima.
 
 ### Cluster clienti
 
@@ -77,9 +84,9 @@ Scheda: `NuoviClienti`
 | Cellulare | Z |
 | Coperture cliente | BC |
 
-Non sono disponibili codice cliente, numero polizza ed email.
-Per riconoscere lo stesso cliente si usa la combinazione normalizzata di nome e
-cognome, data di nascita e fonte. La data della campagna si calcola aggiungendo
+Non sono disponibili codice cliente, numero polizza ed email. Il codice fiscale
+o P.IVA viene cercato tramite la relativa intestazione, quindi la posizione puo'
+cambiare tra un export e l'altro. La data della campagna si calcola aggiungendo
 alla data di inizio rapporto il numero di mesi configurato dall'agente.
 
 ## 02_Scadenze_Clienti.xlsx
@@ -114,20 +121,60 @@ con questo nome, l'import legge automaticamente il primo foglio disponibile.
 | Numero polizza | D |
 | Fonte | E |
 | Ultimo premio lordo | I |
+| Frequenza premio (`Fr.`) | L |
 | Data uscita da Allianz | N |
 | Targa | R |
 | Cellulare | AR |
 
 Non sono disponibili codice cliente, email, ramo/tipologia polizza e motivo
 dell'uscita. La targa sostituisce il ramo come informazione mostrata.
+Il premio lordo mostrato viene annualizzato usando `Fr.`: con valore `S` il
+premio della colonna I viene moltiplicato per 2; con valore `A` resta invariato.
 
-La chiamata viene programmata 10 giorni prima dell'anniversario successivo
-della data di uscita. Esempio: uscita il 16 giugno 2025, anniversario il
-16 giugno 2026 e data calcolata il 6 giugno 2026. Poiche' il 6 giugno 2026 e'
-sabato, la chiamata viene spostata a lunedi' 8 giugno 2026.
+La chiamata viene programmata 15 giorni prima del prossimo anniversario della
+data di uscita. Sono ammessi soltanto il primo e il secondo anniversario: in un
+anno `Y` vengono quindi lavorate le uscite di `Y-1` e `Y-2`. Se la data di
+chiamata cade di sabato o domenica viene spostata al lunedi' successivo.
+Nel calendario e nel monitoraggio la chiamata mostra rispettivamente la
+dicitura `Uscito 1 anno fa` oppure `Uscito 2 anni fa`.
+
+Ogni ciclo e' identificato anche dall'anno dell'anniversario. Ricaricare lo
+stesso file nello stesso anno non duplica la chiamata; nell'anno successivo
+viene invece creato un nuovo ciclo, senza sovrascrivere lo storico. I record
+che arriverebbero al terzo anniversario o a uno successivo vengono ignorati.
+
+Quando una chiamata Winback viene chiusa con lo stato `Ripreso / tornato
+cliente`, la stessa polizza e la stessa uscita non generano il secondo
+anniversario. Durante una successiva importazione viene eliminata anche
+un'eventuale chiamata T+2 ancora aperta gia' generata. Una nuova uscita dello
+stesso cliente mantiene invece una data di uscita diversa e avvia un nuovo
+ciclo Winback.
+
+### Piano di caricamento Winback
+
+Per il mese di anniversario `M` dell'anno `Y`, entro il giorno 15 del mese
+precedente vanno caricati insieme:
+
+- il file del mese `M` relativo alle uscite di `Y-1`;
+- il file del mese `M` relativo alle uscite di `Y-2`.
+
+Per gennaio il caricamento va fatto entro il 15 dicembre dell'anno precedente.
+Esempio: per le chiamate di ottobre 2026 si caricano entro il 15 settembre 2026
+i file delle uscite di ottobre 2025 e ottobre 2024. Per gennaio 2027 si
+caricano entro il 15 dicembre 2026 i file di gennaio 2026 e gennaio 2025.
+
+La finestra scorre ogni anno:
+
+| Anno chiamate | Uscite da caricare |
+| --- | --- |
+| 2026 | 2025 e 2024 |
+| 2027 | 2026 e 2025 |
+| 2028 | 2027 e 2026 |
 
 Per il Winback si possono selezionare e importare piu' file Excel insieme, uno
 per ciascun mese di competenza disponibile. L'importazione e' cumulativa: i
 mesi gia' caricati non vengono cancellati o sostituiti. Se viene ricaricato lo
-stesso cliente con la stessa polizza e la stessa data di uscita, la chiamata
-esistente viene aggiornata o lasciata invariata.
+stesso cliente con la stessa polizza, la stessa data di uscita e lo stesso anno
+di anniversario, la chiamata esistente viene aggiornata o lasciata invariata.
+L'aggiornamento e' consentito soltanto se la chiamata e' ancora nello stato `Da
+chiamare`: una chiamata gia' lavorata mantiene data, contenuti e stato originali.

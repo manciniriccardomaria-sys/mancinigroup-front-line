@@ -34,6 +34,7 @@ type WorksheetHeaderReader = {
 export const NEW_CLIENT_HEADER_COLUMNS = [
   { field: 'fullName', label: 'Nome e cognome', header: 'Contraente', required: true },
   { field: 'source', label: 'Fonte', header: 'Fonte', required: true },
+  { field: 'fiscalCode', label: 'Codice fiscale / P.IVA', header: 'Cod.Fiscale / P.IVA', required: false },
   { field: 'relationshipStartDate', label: 'Inizio rapporto', header: 'Iniz. Rapp.', required: true },
   { field: 'birthDate', label: 'Data di nascita', header: 'Nascita', required: true },
   { field: 'phone', label: 'Cellulare', header: 'Cellulare', required: true },

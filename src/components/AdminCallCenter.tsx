@@ -18,7 +18,9 @@ import {
   Campaign,
   CALL_TRACKING_START_DATE,
   CallTask,
+  getTaskCategoryLabel,
   getTaskEffectiveDate,
+  isCampaignTaskEligible,
   isTaskActionable,
   isTaskBeforeTrackingStart,
   isTaskCampaignWindowOpen,
@@ -167,6 +169,7 @@ export default function AdminCallCenter() {
       const campaign = activeCampaignsById.get(task.campaignId);
       return Boolean(
         campaign &&
+        isCampaignTaskEligible(task, campaign) &&
         task.dueDate >= getCampaignOperationalStartDate(campaign)
       );
     }),
@@ -422,14 +425,14 @@ export default function AdminCallCenter() {
       'Targa',
       'Data evento',
       'Data uscita',
-      'Ultimo premio lordo',
+      'Premio lordo annualizzato',
     ];
     const rows = filteredTasks.map(task => [
       formatDate(task.callbackDate || task.dueDate),
       formatDate(getTaskWorkedDate(task)),
       task.clientName,
       task.phone,
-      task.categoryLabel,
+      getTaskCategoryLabel(task),
       `${task.sourceCode} - ${task.sourceName}`,
       getOperationalStatus(task, today),
       task.assignedToName || '',
@@ -745,7 +748,7 @@ export default function AdminCallCenter() {
                     <p className="font-bold text-slate-800">{task.clientName}</p>
                     <p className="text-xs text-slate-500">{task.phone || 'Telefono assente'}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{task.categoryLabel}</td>
+                  <td className="px-4 py-3 text-slate-700">{getTaskCategoryLabel(task)}</td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-slate-700">{task.sourceCode}</p>
                     <p className="text-xs text-slate-500 max-w-48">{task.sourceName}</p>
@@ -778,7 +781,7 @@ export default function AdminCallCenter() {
                       )}
                       {task.category === 'winback' && task.lastGrossPremium && (
                         <p>
-                          <strong>Premio lordo:</strong> {formatPremium(task.lastGrossPremium)}
+                          <strong>Premio lordo annualizzato:</strong> {formatPremium(task.lastGrossPremium)}
                         </p>
                       )}
                       {task.category === 'scadenza_rata' && task.eventDate && (

@@ -38,7 +38,10 @@ import { SOURCE_DIRECTORY } from '../sourceDirectory';
 import {
   Campaign,
   CallTask,
+  getCampaignKind,
+  getTaskCategoryLabel,
   getTaskEffectiveDate,
+  isCampaignTaskEligible,
   isTaskActionable,
   isTaskBeforeTrackingStart,
   isTaskCampaignWindowOpen,
@@ -126,16 +129,29 @@ export default function EmployeeCallCalendar() {
     () => new Set(activeCampaigns.map(campaign => campaign.id)),
     [activeCampaigns]
   );
+  const activeCampaignsById = useMemo(
+    () => new Map(activeCampaigns.map(campaign => [campaign.id, campaign])),
+    [activeCampaigns]
+  );
+  const annualExpirationCampaignIds = useMemo(
+    () => new Set(
+      activeCampaigns
+        .filter(campaign => getCampaignKind(campaign) === 'annualExpirations')
+        .map(campaign => campaign.id)
+    ),
+    [activeCampaigns]
+  );
 
   const enabledTasks = useMemo(
-    () => tasks.filter(task =>
-      isCallCategoryEnabled(task.category) &&
-      (
-        task.category !== 'campagna' ||
-        Boolean(task.campaignId && activeCampaignIds.has(task.campaignId))
-      )
-    ),
-    [tasks, activeCampaignIds]
+    () => tasks.filter(task => {
+      if (!isCallCategoryEnabled(task.category)) return false;
+      if (task.category !== 'campagna') return true;
+      if (!task.campaignId) return false;
+
+      const campaign = activeCampaignsById.get(task.campaignId);
+      return Boolean(campaign && isCampaignTaskEligible(task, campaign));
+    }),
+    [tasks, activeCampaignsById]
   );
 
   const availableHelpSources = useMemo(() => {
@@ -571,7 +587,7 @@ export default function EmployeeCallCalendar() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-bold text-slate-800">{task.clientName}</h4>
                           <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">
-                            {task.categoryLabel}
+                            {getTaskCategoryLabel(task)}
                           </span>
                           {task.autoPremium && (
                             <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">
@@ -610,9 +626,17 @@ export default function EmployeeCallCalendar() {
                               <strong>Scadenza annuale:</strong> {formatDisplayDate(task.eventDate)}
                             </span>
                           )}
+                          {task.category === 'campagna' &&
+                            task.campaignId &&
+                            annualExpirationCampaignIds.has(task.campaignId) &&
+                            task.eventDate && (
+                              <span>
+                                <strong>Data scadenza:</strong> {formatDisplayDate(task.eventDate)}
+                              </span>
+                            )}
                           {task.category === 'winback' && task.lastGrossPremium && (
                             <span>
-                              <strong>Ultimo premio lordo:</strong> {formatPremium(task.lastGrossPremium)}
+                              <strong>Premio lordo annualizzato:</strong> {formatPremium(task.lastGrossPremium)}
                             </span>
                           )}
                           {task.category === 'winback' && task.exitDate && (

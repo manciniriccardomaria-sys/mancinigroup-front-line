@@ -57,6 +57,7 @@ export const CLIENT_IMPORT_CONFIG = {
       policyNumber: 'D',
       source: 'E',
       lastGrossPremium: 'I',
+      premiumFrequency: 'L',
       exitDate: 'N',
       vehiclePlate: 'R',
       phone: 'AR',
@@ -64,7 +65,8 @@ export const CLIENT_IMPORT_CONFIG = {
     identityFields: ['policyNumber'],
     scheduleRule: {
       type: 'next_exit_anniversary_minus_reminder_days',
-      reminderDays: 10,
+      reminderDays: 15,
+      anniversaryYears: [1, 2],
     },
   },
 } as const;
