@@ -1172,7 +1172,7 @@ function buildAnnualExpirationCampaignTasks(
   record: ExpirationRecord,
   campaigns: Campaign[],
 ): ParsedImport['tasks'] {
-  if (!isExplicitAnnualExpiration(record.expirationType)) {
+  if (!isExplicitAnnualExpiration(record)) {
     return [];
   }
 
@@ -1256,16 +1256,19 @@ export function getCampaignKind(campaign: Campaign): CampaignKind {
 }
 
 export function isCampaignTaskEligible(
-  task: Pick<CallTask, 'category' | 'expirationType'>,
+  task: Pick<CallTask, 'category' | 'expirationType' | 'policyNumber'>,
   campaign: Campaign,
 ): boolean {
   return task.category !== 'campagna' ||
     getCampaignKind(campaign) !== 'annualExpirations' ||
-    isExplicitAnnualExpiration(task.expirationType);
+    isExplicitAnnualExpiration(task);
 }
 
-function isExplicitAnnualExpiration(expirationType: string | undefined): boolean {
-  return (expirationType || '').trim().toUpperCase() === 'A';
+function isExplicitAnnualExpiration(
+  expiration: Pick<ExpirationRecord, 'expirationType' | 'policyNumber'>,
+): boolean {
+  return Boolean(expiration.policyNumber?.trim()) &&
+    (expiration.expirationType || '').trim().toUpperCase() === 'A';
 }
 
 function isNewClientCampaign(campaign: Campaign): boolean {

@@ -110,6 +110,12 @@ Non sono disponibili codice cliente, email, premio lordo e stato polizza. Le
 campagne annuali usano la prossima scadenza letta in `AH` e sottraggono il
 numero di giorni configurato nella campagna.
 
+Una scadenza entra in una campagna annuale soltanto quando il record contiene
+un numero di polizza e il tipo scadenza in colonna `K` e' `A`. L'export clienti
+esteso, che non espone questi due dati di polizza, non viene considerato una
+fonte valida per le campagne annuali: `Dt. Prox Scad Cl` puo' infatti indicare
+anche una scadenza di rata.
+
 ## 03_Winback_Clienti.xlsx
 
 Scheda: `Winback`. Se il file esportato dal portale non contiene una scheda

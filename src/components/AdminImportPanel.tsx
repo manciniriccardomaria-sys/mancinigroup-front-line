@@ -34,6 +34,7 @@ import {
   ParsedImport,
   getCampaignKind,
   importCallTasks,
+  isCampaignTaskEligible,
   parseClientWorkbook,
   syncCampaignTasks,
 } from '../callCenter';
@@ -207,7 +208,9 @@ export default function AdminImportPanel() {
       importLabel: string,
       campaign?: Campaign,
     ): CoverageItem => {
-      const tasks = coverageTasksByKey[key] || [];
+      const tasks = (coverageTasksByKey[key] || []).filter(task =>
+        !campaign || isCampaignTaskEligible(task, campaign)
+      );
       const coveredUntil = tasks.reduce((latest, task) => (
         task.dueDate?.match(/^\d{4}-\d{2}-\d{2}$/) && task.dueDate > latest
           ? task.dueDate
