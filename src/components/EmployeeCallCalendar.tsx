@@ -16,6 +16,7 @@ import { it } from 'date-fns/locale';
 import {
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -23,6 +24,7 @@ import {
   Phone,
   Search,
   UserCheck,
+  X,
 } from 'lucide-react';
 import {
   collection,
@@ -75,6 +77,7 @@ export default function EmployeeCallCalendar() {
   const [savingTaskId, setSavingTaskId] = useState('');
   const [callbackTaskId, setCallbackTaskId] = useState('');
   const [callbackDate, setCallbackDate] = useState('');
+  const [recoveredClientsOpen, setRecoveredClientsOpen] = useState(false);
   const [error, setError] = useState('');
 
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
@@ -258,6 +261,28 @@ export default function EmployeeCallCalendar() {
   const overdueCount = modeTasks.filter(task =>
     getTaskEffectiveDate(task) < today && isTaskActionable(task, today)
   ).length;
+
+  const recoveredTasks = useMemo(
+    () => modeTasks
+      .filter(task => task.status === 'ripreso' && task.eventDate >= today)
+      .sort((first, second) => {
+        const dateComparison = first.eventDate.localeCompare(second.eventDate);
+        if (dateComparison !== 0) return dateComparison;
+        return first.clientName.localeCompare(second.clientName, 'it');
+      }),
+    [modeTasks, today]
+  );
+
+  useEffect(() => {
+    if (!recoveredClientsOpen) return undefined;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setRecoveredClientsOpen(false);
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [recoveredClientsOpen]);
 
   const claimTask = async (task: CallTask) => {
     setSavingTaskId(task.id);
@@ -527,6 +552,25 @@ export default function EmployeeCallCalendar() {
                 </div>
               </div>
             )}
+
+            {recoveredTasks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setRecoveredClientsOpen(true)}
+                className="mt-3 w-full bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2 text-left hover:bg-emerald-100 transition-colors"
+              >
+                <CheckCircle2 size={17} className="text-emerald-600 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-emerald-700">
+                    {recoveredTasks.length} {recoveredTasks.length === 1 ? 'cliente ripreso' : 'clienti ripresi'}
+                  </span>
+                  <span className="block text-[11px] text-emerald-600">
+                    Clicca per vedere la lista
+                  </span>
+                </span>
+                <ChevronRight size={17} className="text-emerald-600 shrink-0" />
+              </button>
+            )}
           </div>
 
           <div className="p-4 min-w-0">
@@ -734,6 +778,92 @@ export default function EmployeeCallCalendar() {
           </div>
         </div>
       </section>
+
+      {recoveredClientsOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/45 p-4 flex items-center justify-center"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setRecoveredClientsOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recovered-clients-title"
+            className="w-full max-w-3xl max-h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-start justify-between gap-4">
+              <div>
+                <h3
+                  id="recovered-clients-title"
+                  className="font-bold text-slate-800 flex items-center gap-2"
+                >
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                  Clienti ripresi
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Restano visibili fino alla rispettiva data di scadenza.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecoveredClientsOpen(false)}
+                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"
+                aria-label="Chiudi elenco clienti ripresi"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3">
+              {recoveredTasks.map(task => (
+                <article
+                  key={task.id}
+                  className="border border-emerald-200 bg-emerald-50/60 rounded-lg p-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-bold text-slate-800">{task.clientName}</h4>
+                        <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold">
+                          Ripreso
+                        </span>
+                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">
+                          {getTaskCategoryLabel(task)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                        <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
+                        {task.policyNumber && (
+                          <span><strong>Polizza:</strong> {task.policyNumber}</span>
+                        )}
+                        <span>
+                          <strong>Scadenza:</strong> {formatDisplayDate(task.eventDate)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {task.phone ? (
+                      <a
+                        href={`tel:${task.phone.replace(/\s+/g, '')}`}
+                        className="inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-bold shrink-0"
+                      >
+                        <Phone size={16} />
+                        {task.phone}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-red-600 font-semibold shrink-0">
+                        Telefono assente
+                      </span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

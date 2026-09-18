@@ -34,6 +34,10 @@ Lo stato iniziale e' sempre `Da chiamare`. Tutti gli stati restano modificabili:
 Nel Winback, `Ripreso / tornato cliente` esclude automaticamente il secondo
 anniversario della stessa polizza e della stessa uscita.
 
+Nel calendario i clienti con stato `Ripreso / tornato cliente` sono raccolti
+nel riquadro verde sotto gli arretrati. Il riquadro apre l'elenco dei ripresi;
+ogni cliente vi rimane visibile fino alla propria data di scadenza compresa.
+
 Quando viene scelto `Da richiamare`, la nuova data di chiamata e' obbligatoria.
 La cronologia conserva autore, data e ora di ogni variazione.
 
