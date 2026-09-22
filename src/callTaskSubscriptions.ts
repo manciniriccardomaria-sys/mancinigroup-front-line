@@ -66,8 +66,8 @@ function subscribeToCallTasksByQueries(
         return [
           item.id,
           {
-            id: item.id,
             ...data,
+            id: item.id,
           } as CallTask,
         ];
       })));

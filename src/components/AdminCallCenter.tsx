@@ -130,8 +130,8 @@ export default function AdminCallCenter() {
 
     return onSnapshot(tasksQuery, snapshot => {
       setTasks(snapshot.docs.map(item => ({
-        id: item.id,
         ...item.data(),
+        id: item.id,
       } as CallTask)));
       setLoading(false);
     }, error => {

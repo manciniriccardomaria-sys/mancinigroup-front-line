@@ -485,9 +485,11 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       continue;
     }
 
-    const taskRef = doc(db, 'call_tasks', existingTask?.id || task.id);
+    const targetId = existingTask?.id || task.id;
+    const taskRef = doc(db, 'call_tasks', targetId);
     const storedTask = removeUndefined({
       ...task,
+      id: targetId,
       importedAt: serverTimestamp(),
       ...(previousFingerprint === undefined
         ? {
