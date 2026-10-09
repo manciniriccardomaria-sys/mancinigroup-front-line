@@ -34,6 +34,7 @@ import {
 } from '../callWorkflowConfig';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 import { getItalyDate } from '../lib/utils';
+import { isTaskInHistory } from '../callHistory';
 import CallCategoryFilter, {
   CallCategorySelection,
   CampaignFilterOption,
@@ -121,11 +122,14 @@ export default function AdminCallCenter() {
     );
   }, [endDate, nextSevenDays, workPeriodRange.end]);
 
+  const loadingHistory = operationalView === 'history';
   useEffect(() => {
     const tasksQuery = query(
       collection(db, 'call_tasks'),
-      where('dueDate', '>=', CALL_TRACKING_START_DATE),
-      where('dueDate', '<=', taskWindowEnd),
+      ...(loadingHistory ? [] : [
+        where('dueDate', '>=', CALL_TRACKING_START_DATE),
+        where('dueDate', '<=', taskWindowEnd),
+      ]),
     );
 
     return onSnapshot(tasksQuery, snapshot => {
@@ -138,7 +142,7 @@ export default function AdminCallCenter() {
       console.error('Error loading call tasks:', error);
       setLoading(false);
     });
-  }, [taskWindowEnd]);
+  }, [taskWindowEnd, loadingHistory]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
@@ -150,10 +154,6 @@ export default function AdminCallCenter() {
   const activeCampaigns = useMemo(
     () => campaigns.filter(campaign => campaign.active),
     [campaigns]
-  );
-  const activeCampaignIds = useMemo(
-    () => new Set(activeCampaigns.map(campaign => campaign.id)),
-    [activeCampaigns]
   );
   const activeCampaignsById = useMemo(
     () => new Map(activeCampaigns.map(campaign => [campaign.id, campaign])),
@@ -176,40 +176,44 @@ export default function AdminCallCenter() {
     [tasks, activeCampaignsById]
   );
 
+  const historicalTasks = useMemo(() => tasks.filter(task => isTaskInHistory(task, today)), [tasks, today]);
+  const filterOptionTasks = useMemo(() => [...new Map(
+    [...enabledTasks, ...historicalTasks].map(task => [task.id, task])
+  ).values()], [enabledTasks, historicalTasks]);
+
   const sources = useMemo(
     () => [...new Map(
-      enabledTasks.map(task => [task.sourceCode, `${task.sourceCode} · ${task.sourceName}`])
+      filterOptionTasks.map(task => [task.sourceCode, `${task.sourceCode} · ${task.sourceName}`])
     ).entries()].sort((first, second) => first[1].localeCompare(second[1], 'it')),
-    [enabledTasks]
+    [filterOptionTasks]
   );
 
   const assignees = useMemo(
-    () => [...new Set(enabledTasks.map(task => task.assignedToName).filter(Boolean))]
+    () => [...new Set(filterOptionTasks.map(task => task.assignedToName).filter(Boolean))]
       .sort((first, second) => first.localeCompare(second, 'it')),
-    [enabledTasks]
+    [filterOptionTasks]
   );
 
-  const campaignOptions = useMemo<CampaignFilterOption[]>(
-    () => activeCampaigns
-      .map(campaign => ({
-        id: campaign.id,
-        label: campaign.name,
-      }))
-      .sort((first, second) => first.label.localeCompare(second.label, 'it')),
-    [activeCampaigns]
-  );
-
-  useEffect(() => {
-    setSelectedCategories(previous => previous.filter(selection =>
-      !selection.startsWith('campaign:') ||
-      activeCampaignIds.has(selection.slice('campaign:'.length))
-    ));
-  }, [activeCampaignIds]);
+  const campaignOptions = useMemo<CampaignFilterOption[]>(() => {
+    const options = new Map(campaigns.map(campaign => [campaign.id, {
+      id: campaign.id,
+      label: campaign.name,
+    }]));
+    filterOptionTasks.forEach(task => {
+      if (task.campaignId && !options.has(task.campaignId)) {
+        options.set(task.campaignId, {
+          id: task.campaignId,
+          label: task.campaignName || task.categoryLabel,
+        });
+      }
+    });
+    return [...options.values()].sort((first, second) => first.label.localeCompare(second.label, 'it'));
+  }, [campaigns, filterOptionTasks]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return enabledTasks
+    return (operationalView === 'history' ? historicalTasks : enabledTasks)
       .filter(task => {
         const effectiveDate = getTaskEffectiveDate(task);
         const matchesSearch = !normalizedSearch || [
@@ -235,9 +239,7 @@ export default function AdminCallCenter() {
             isDateInRange(getTaskWorkedDate(task), workPeriodRange.start, workPeriodRange.end),
           workedPossible: isTaskPossibleUntilToday(task, today) && isTaskWorked(task),
           possible: isTaskPossibleUntilToday(task, today),
-          history: isTaskClosed(task.status) ||
-            isTaskExpired(task, today) ||
-            isTaskBeforeTrackingStart(task),
+          history: isTaskInHistory(task, today),
         }[operationalView];
 
         return matchesSearch && matchesOperationalView &&
@@ -256,6 +258,7 @@ export default function AdminCallCenter() {
       });
   }, [
     enabledTasks,
+    historicalTasks,
     search,
     status,
     selectedCategories,

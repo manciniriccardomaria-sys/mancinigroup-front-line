@@ -20,6 +20,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { getItalyDate } from './lib/utils';
+import { canDiscardUnworkedTask } from './callHistory';
 import {
   AUTHORIZED_EMPLOYEES,
 } from './constants';
@@ -423,7 +424,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       const task = item.data() as Partial<CallTask>;
       const isStillGenerated = nextTaskIds.has(item.id) ||
         nextTaskLogicalKeys.has(getTaskLogicalKey(task));
-      if (isStillGenerated || task.status !== 'da_chiamare') continue;
+      if (isStillGenerated || !canDiscardUnworkedTask(task, getItalyDate())) continue;
 
       batch.delete(doc(db, 'call_tasks', item.id));
       batchSize += 1;
@@ -438,7 +439,7 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
         getWinbackRelationshipKey(task),
       );
       if (
-        task.status !== 'da_chiamare' ||
+        !canDiscardUnworkedTask(task, getItalyDate()) ||
         !recoveredEventDate ||
         !task.eventDate ||
         task.eventDate <= recoveredEventDate
@@ -466,13 +467,15 @@ export async function importCallTasks(parsed: ParsedImport): Promise<ImportResul
       continue;
     }
 
-    // Una chiamata gia' lavorata conserva integralmente date e contenuti del
-    // proprio ciclo. I ricaricamenti possono aggiornare soltanto le chiamate
-    // ancora in stato "Da chiamare".
+    // Lo storico e le chiamate prese in carico conservano date e contenuti.
+    // I ricaricamenti aggiornano solo chiamate ancora da lavorare e non passate.
     if (
-      task.importType === 'winback' &&
       existingTask &&
-      existingTask.task.status !== 'da_chiamare'
+      (existingTask.task.status !== 'da_chiamare' ||
+        existingTask.task.calledDate ||
+        existingTask.task.assignedToUid ||
+        existingTask.task.updatedByUid ||
+        (existingTask.task.dueDate && existingTask.task.dueDate <= getItalyDate()))
     ) {
       unchanged += 1;
       continue;
@@ -635,7 +638,7 @@ async function pruneOpenCampaignTasks(
     const task = item.data() as Partial<CallTask>;
     const isStillGenerated = nextIds.has(item.id) ||
       nextLogicalKeys.has(getTaskLogicalKey(task));
-    if (isStillGenerated || task.status !== 'da_chiamare') continue;
+    if (isStillGenerated || !canDiscardUnworkedTask(task, getItalyDate())) continue;
 
     batch.delete(doc(db, 'call_tasks', item.id));
     batchSize += 1;

@@ -46,8 +46,6 @@ import {
   isCampaignTaskEligible,
   isTaskActionable,
   isTaskBeforeTrackingStart,
-  isTaskCampaignWindowOpen,
-  isTaskClosed,
   isTaskExpired,
 } from '../callCenter';
 import {
@@ -56,6 +54,7 @@ import {
   isCallCategoryEnabled,
 } from '../callWorkflowConfig';
 import { getItalyDate } from '../lib/utils';
+import { getTaskCalendarDates, getTaskLastActionDate, isTaskInHistory } from '../callHistory';
 import CallCategoryFilter, {
   CallCategorySelection,
   CampaignFilterOption,
@@ -128,24 +127,20 @@ export default function EmployeeCallCalendar() {
     () => campaigns.filter(campaign => campaign.active),
     [campaigns]
   );
-  const activeCampaignIds = useMemo(
-    () => new Set(activeCampaigns.map(campaign => campaign.id)),
-    [activeCampaigns]
-  );
   const activeCampaignsById = useMemo(
     () => new Map(activeCampaigns.map(campaign => [campaign.id, campaign])),
     [activeCampaigns]
   );
   const annualExpirationCampaignIds = useMemo(
     () => new Set(
-      activeCampaigns
+      campaigns
         .filter(campaign => getCampaignKind(campaign) === 'annualExpirations')
         .map(campaign => campaign.id)
     ),
-    [activeCampaigns]
+    [campaigns]
   );
 
-  const enabledTasks = useMemo(
+  const operationalTasks = useMemo(
     () => tasks.filter(task => {
       if (!isCallCategoryEnabled(task.category)) return false;
       if (task.category !== 'campagna') return true;
@@ -156,6 +151,10 @@ export default function EmployeeCallCalendar() {
     }),
     [tasks, activeCampaignsById]
   );
+  const operationalTaskIds = useMemo(() => new Set(operationalTasks.map(task => task.id)), [operationalTasks]);
+  const enabledTasks = useMemo(() => tasks.filter(task =>
+    operationalTaskIds.has(task.id) || isTaskInHistory(task, today)
+  ), [tasks, operationalTaskIds, today]);
 
   const availableHelpSources = useMemo(() => {
     const sources = new Map<string, { key: string; code: string; name: string }>();
@@ -177,13 +176,14 @@ export default function EmployeeCallCalendar() {
   }, [ownSourceCodes]);
 
   const modeTasks = useMemo(() => enabledTasks.filter(task => {
-    if (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task)) return false;
+    if (!isTaskInHistory(task, today) &&
+      (isTaskExpired(task, today) || isTaskBeforeTrackingStart(task))) return false;
     const isMine = ownSourceCodes.some(code => code === task.sourceCode);
     if (sourceMode === 'mine') return isMine;
     if (!canHelpOtherSources) return false;
     return !isMine &&
       selectedHelpSources.includes(getSourceKey(task)) &&
-      (!task.assignedToUid || task.assignedToUid === currentUid);
+      (isTaskInHistory(task, today) || !task.assignedToUid || task.assignedToUid === currentUid);
   }), [
     enabledTasks,
     ownSourceCodes,
@@ -194,22 +194,21 @@ export default function EmployeeCallCalendar() {
     selectedHelpSources,
   ]);
 
-  const campaignOptions = useMemo<CampaignFilterOption[]>(
-    () => activeCampaigns
-      .map(campaign => ({
-        id: campaign.id,
-        label: campaign.name,
-      }))
-      .sort((first, second) => first.label.localeCompare(second.label, 'it')),
-    [activeCampaigns]
-  );
-
-  useEffect(() => {
-    setSelectedCategories(previous => previous.filter(selection =>
-      !selection.startsWith('campaign:') ||
-      activeCampaignIds.has(selection.slice('campaign:'.length))
-    ));
-  }, [activeCampaignIds]);
+  const campaignOptions = useMemo<CampaignFilterOption[]>(() => {
+    const options = new Map(campaigns.map(campaign => [campaign.id, {
+      id: campaign.id,
+      label: campaign.name,
+    }]));
+    modeTasks.forEach(task => {
+      if (task.campaignId && !options.has(task.campaignId)) {
+        options.set(task.campaignId, {
+          id: task.campaignId,
+          label: task.campaignName || task.categoryLabel,
+        });
+      }
+    });
+    return [...options.values()].sort((first, second) => first.label.localeCompare(second.label, 'it'));
+  }, [campaigns, modeTasks]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
@@ -221,23 +220,23 @@ export default function EmployeeCallCalendar() {
     const counts = new Map<string, number>();
     modeTasks.forEach(task => {
       if (!matchesCategorySelection(task, selectedCategories)) return;
-      const date = getEmployeeCalendarDate(task, today);
-      if (!date) return;
-      counts.set(date, (counts.get(date) || 0) + 1);
+      getTaskCalendarDates(
+        task, today, operationalTaskIds.has(task.id) && isTaskActionable(task, today),
+      ).forEach(date => {
+        counts.set(date, (counts.get(date) || 0) + 1);
+      });
     });
     return counts;
-  }, [modeTasks, today, selectedCategories]);
+  }, [modeTasks, operationalTaskIds, today, selectedCategories]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
     return modeTasks
       .filter(task => {
-        const calendarDate = getEmployeeCalendarDate(task, today);
-        if (!calendarDate) return false;
-
-        const isSelectedDay = calendarDate === selectedDate;
-        const isOverdue = selectedDate === today && isTaskActionable(task, today);
+        const isSelectedDay = getTaskCalendarDates(
+          task, today, operationalTaskIds.has(task.id) && isTaskActionable(task, today),
+        ).includes(selectedDate);
         const matchesSearch = !normalizedSearch || [
           task.clientName,
           task.phone,
@@ -245,21 +244,21 @@ export default function EmployeeCallCalendar() {
           task.vehiclePlate,
         ].some(value => value?.toLowerCase().includes(normalizedSearch));
 
-        return (isSelectedDay || isOverdue) &&
+        return isSelectedDay &&
           matchesSearch &&
           matchesCategorySelection(task, selectedCategories);
       })
       .sort((first, second) => {
-        const firstDate = getEmployeeCalendarDate(first, today) || getTaskEffectiveDate(first);
-        const secondDate = getEmployeeCalendarDate(second, today) || getTaskEffectiveDate(second);
+        const firstDate = getTaskEffectiveDate(first);
+        const secondDate = getTaskEffectiveDate(second);
         const dateComparison = firstDate.localeCompare(secondDate);
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
       });
-  }, [modeTasks, selectedDate, today, search, selectedCategories]);
+  }, [modeTasks, operationalTaskIds, selectedDate, today, search, selectedCategories]);
 
   const overdueCount = modeTasks.filter(task =>
-    getTaskEffectiveDate(task) < today && isTaskActionable(task, today)
+    getTaskEffectiveDate(task) < today && operationalTaskIds.has(task.id) && isTaskActionable(task, today)
   ).length;
 
   const recoveredTasks = useMemo(
@@ -605,15 +604,24 @@ export default function EmployeeCallCalendar() {
               </div>
             </div>
 
+            <p className="mb-4 text-xs text-slate-500">
+              Le chiamate restano consultabili nella data prevista e nella data dell’ultima azione,
+              anche dopo la chiusura o la scadenza. Seleziona un giorno precedente per vedere lo storico.
+            </p>
+
             <div className="space-y-3">
               {filteredTasks.map(task => {
                 const effectiveDate = getTaskEffectiveDate(task);
                 const isCalled = task.status === 'chiamato';
-                const isOverdue = effectiveDate < today && !isTaskClosed(task.status);
+                const isOverdue = effectiveDate < today && operationalTaskIds.has(task.id) && isTaskActionable(task, today);
+                const isExpired = isTaskExpired(task, today);
+                const lastActionDate = getTaskLastActionDate(task);
+                const isOperational = operationalTaskIds.has(task.id) &&
+                  task.eventDate >= today && !isTaskBeforeTrackingStart(task);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
-                const canEdit = !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
-                const needsClaim = !isOwnSource && !task.assignedToUid;
+                const canEdit = isOperational && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
+                const needsClaim = isOperational && !isOwnSource && !task.assignedToUid;
 
                 return (
                   <article
@@ -643,14 +651,25 @@ export default function EmployeeCallCalendar() {
                               Arretrata · {format(parseISO(effectiveDate), 'dd/MM/yyyy')}
                             </span>
                           )}
-                          {isCalled && (
-                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold">
-                              Chiamato
+                          {task.status !== 'da_chiamare' && (
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                              isCalled || task.status === 'ripreso'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {CALL_STATUSES.find(status => status.id === task.status)?.label}
                             </span>
                           )}
                         </div>
 
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                          <span><strong>Data prevista:</strong> {formatDisplayDate(task.dueDate)}</span>
+                          {lastActionDate && (
+                            <span><strong>Ultima azione:</strong> {formatDisplayDate(lastActionDate)}{task.updatedByName ? ` · ${task.updatedByName}` : ''}</span>
+                          )}
+                          {task.status === 'da_richiamare' && task.callbackDate && (
+                            <span><strong>Richiamo:</strong> {formatDisplayDate(task.callbackDate)}</span>
+                          )}
                           <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
                           {task.policyNumber && <span><strong>Polizza:</strong> {task.policyNumber}</span>}
                           {task.fiscalCode && <span><strong>Codice fiscale:</strong> {task.fiscalCode}</span>}
@@ -734,6 +753,12 @@ export default function EmployeeCallCalendar() {
                               <option key={status.id} value={status.id}>{status.label}</option>
                             ))}
                           </select>
+                        )}
+
+                        {!isOperational && (
+                          <p className="text-[11px] text-slate-500 mt-2">
+                            {isExpired ? 'Scaduta · consultazione storico' : 'Consultazione storico'}
+                          </p>
                         )}
 
                         {assignedToOther && (
@@ -866,21 +891,6 @@ export default function EmployeeCallCalendar() {
       )}
     </div>
   );
-}
-
-function getEmployeeCalendarDate(task: CallTask, today: string): string | undefined {
-  if (!isTaskCampaignWindowOpen(task, today)) return undefined;
-
-  if (task.status === 'chiamato') {
-    return task.calledDate || getTaskEffectiveDate(task);
-  }
-
-  if (isTaskClosed(task.status)) return undefined;
-
-  const effectiveDate = getTaskEffectiveDate(task);
-  if (!effectiveDate) return undefined;
-
-  return isTaskActionable(task, today) ? today : effectiveDate;
 }
 
 function matchesCategorySelection(
