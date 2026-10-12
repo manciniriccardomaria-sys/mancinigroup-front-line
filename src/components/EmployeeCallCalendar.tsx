@@ -673,6 +673,11 @@ export default function EmployeeCallCalendar() {
                           <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
                           {task.policyNumber && <span><strong>Polizza:</strong> {task.policyNumber}</span>}
                           {task.fiscalCode && <span><strong>Codice fiscale:</strong> {task.fiscalCode}</span>}
+                          {task.birthDate && (
+                            <span>
+                              <strong>Data di nascita:</strong> {formatDisplayDate(task.birthDate)}
+                            </span>
+                          )}
                           {task.policyType && <span><strong>Ramo:</strong> {task.policyType}</span>}
                           {task.vehiclePlate && <span><strong>Targa:</strong> {task.vehiclePlate}</span>}
                           {task.autoPremium && (
