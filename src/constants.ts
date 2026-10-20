@@ -62,6 +62,12 @@ export interface AuthorizedEmployee {
 
 export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
   {
+    name: 'Riccardo collaboratore',
+    email: 'manciniriccardo9@gmail.com',
+    sourceCodes: ['098'],
+    canHelpOtherSources: false,
+  },
+  {
     name: 'Marina Bartoli',
     email: 'b.marinamancinigroup@gmail.com',
     sourceCodes: ['005', '043'],

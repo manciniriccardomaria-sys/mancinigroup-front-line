@@ -24,6 +24,7 @@ import {
   Calendar, 
   CalendarDays,
   ClipboardList,
+  Handshake,
   History,
   Target,
   User as UserIcon,
@@ -39,6 +40,10 @@ import {
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
+import { isNegotiationsPilot, isProposalCategory, PILOT_REPORTS_COLLECTION } from '../negotiationModel';
+import ProposalDialog from './ProposalDialog';
+import NegotiationsTab from './NegotiationsTab';
+import { adjustPilotReportCount } from '../negotiations';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -51,7 +56,8 @@ export default function EmployeeDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
-  const [selectedView, setSelectedView] = useState<'calendar' | 'report'>('report');
+  const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'negotiations'>('report');
+  const [proposalCategory, setProposalCategory] = useState<ReportCategory | null>(null);
   const [showReportHistory, setShowReportHistory] = useState(false);
   const [historyDate, setHistoryDate] = useState(() =>
     format(subDays(parseISO(getItalyDate()), 1), 'yyyy-MM-dd')
@@ -65,6 +71,8 @@ export default function EmployeeDashboard() {
     loading: categoriesLoading,
   } = useReportCategories();
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
+  const negotiationsEnabled = isNegotiationsPilot(auth.currentUser?.email);
+  const reportsCollection = negotiationsEnabled ? PILOT_REPORTS_COLLECTION : 'daily_reports';
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -82,8 +90,8 @@ export default function EmployeeDashboard() {
     }
 
     const reportId = `${user.uid}_${today}`;
-    const reportRef = doc(db, 'daily_reports', reportId);
-    const initialReport = createInitialReport(user.uid, user.displayName || 'Utente', today);
+    const reportRef = doc(db, reportsCollection, reportId);
+    const initialReport = createInitialReport(user.uid, (negotiationsEnabled ? employee?.name : user.displayName) || 'Utente', today);
     let unsubscribe: Unsubscribe | undefined;
     let cancelled = false;
 
@@ -128,7 +136,7 @@ export default function EmployeeDashboard() {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [today]);
+  }, [today, reportsCollection]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -142,7 +150,7 @@ export default function EmployeeDashboard() {
       user.displayName || 'Utente',
       historyDate,
     );
-    const reportRef = doc(db, 'daily_reports', `${user.uid}_${historyDate}`);
+    const reportRef = doc(db, reportsCollection, `${user.uid}_${historyDate}`);
     setHistoryLoading(true);
     setHistoryError('');
 
@@ -162,7 +170,7 @@ export default function EmployeeDashboard() {
       setHistoryLoading(false);
       setHistoryError('Non è stato possibile caricare lo storico della giornata selezionata.');
     });
-  }, [showReportHistory, historyDate]);
+  }, [showReportHistory, historyDate, reportsCollection]);
 
   useEffect(() => onSnapshot(
     doc(db, 'daily_objectives', 'current'),
@@ -193,14 +201,14 @@ export default function EmployeeDashboard() {
     }
   ), [categories]);
 
-  useEffect(() => subscribeToCallTasksForEmployee(
+  useEffect(() => negotiationsEnabled ? undefined : subscribeToCallTasksForEmployee(
     employee?.sourceCodes || [],
     auth.currentUser?.uid || '',
     setCallTasks,
     callError => {
       console.error('Error loading call notification count:', callError);
     },
-  ), [employee]);
+  ), [employee, negotiationsEnabled]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
@@ -235,7 +243,19 @@ export default function EmployeeDashboard() {
   }, [callTasks, campaigns, employee, today]);
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
-    if (!report || !auth.currentUser) return;
+    if (!report || !auth.currentUser || saving) return;
+    if (negotiationsEnabled && isProposalCategory(categoryId)) return;
+    if (negotiationsEnabled) {
+      setSaving(true);
+      try {
+        await adjustPilotReportCount(categoryId, delta);
+      } catch (saveError) {
+        setError(getReportErrorMessage(saveError));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     const newValue = Math.max(
       0,
@@ -252,7 +272,7 @@ export default function EmployeeDashboard() {
     setSaving(true);
     const reportId = `${auth.currentUser.uid}_${today}`;
     try {
-      await setDoc(doc(db, 'daily_reports', reportId), updatedReport, { merge: true });
+      await setDoc(doc(db, reportsCollection, reportId), updatedReport, { merge: true });
     } catch (saveError) {
       console.error('Error saving daily report:', saveError);
       setError(getReportErrorMessage(saveError));
@@ -300,7 +320,7 @@ export default function EmployeeDashboard() {
               <UserIcon size={20} />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-none">{auth.currentUser?.displayName}</h1>
+              <h1 className="font-bold text-lg leading-none">{negotiationsEnabled ? employee?.name : auth.currentUser?.displayName}</h1>
               <p className="text-blue-200 text-xs mt-1 flex items-center gap-1">
                 <Calendar size={12} />
                 {new Date().toLocaleDateString('it-IT', {
@@ -323,6 +343,11 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
+        {negotiationsEnabled && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm">
+            <strong>Test trattative · Fonte 098.</strong> Proposte e contatori di questo account sono separati dai report operativi. Il + sulle proposte apre la scheda cliente; il conteggio aumenta al salvataggio. Gestisci gli esiti nel tab Trattative.
+          </div>
+        )}
         {error && (
           <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
             {error} Le modifiche al report potrebbero non essere salvate finché Firestore non torna disponibile.
@@ -342,7 +367,7 @@ export default function EmployeeDashboard() {
             <ClipboardList size={17} />
             Report giornaliero
           </button>
-          <button
+          {!negotiationsEnabled && <button
             type="button"
             onClick={() => setSelectedView('calendar')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
@@ -362,10 +387,17 @@ export default function EmployeeDashboard() {
                 {calendarNotificationCount}
               </span>
             )}
-          </button>
+          </button>}
+          {negotiationsEnabled && (
+            <button type="button" onClick={() => setSelectedView('negotiations')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${selectedView === 'negotiations' ? 'bg-[#003781] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <Handshake size={17} />Trattative
+            </button>
+          )}
         </div>
 
         {selectedView === 'calendar' && <EmployeeCallCalendar />}
+        {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab />}
 
         {selectedView === 'report' && (
           <section className="space-y-3">
@@ -492,8 +524,8 @@ export default function EmployeeDashboard() {
                               <button
                                 onClick={() => updateCount(cat.id, -1)}
                                 className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
-                                disabled={value === 0}
-                                title={`Diminuisci ${cat.label}`}
+                                disabled={value === 0 || saving || (negotiationsEnabled && isProposalCategory(cat.id))}
+                                title={negotiationsEnabled && isProposalCategory(cat.id) ? 'Il conteggio corrisponde alle proposte salvate. Gestisci gli esiti in Trattative.' : `Diminuisci ${cat.label}`}
                               >
                                 <Minus size={16} />
                               </button>
@@ -501,9 +533,10 @@ export default function EmployeeDashboard() {
                                 {value}
                               </div>
                               <button
-                                onClick={() => updateCount(cat.id, 1)}
-                                className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90"
-                                title={`Aumenta ${cat.label}`}
+                                onClick={() => negotiationsEnabled && isProposalCategory(cat.id) ? setProposalCategory(cat) : updateCount(cat.id, 1)}
+                                disabled={saving || Boolean(proposalCategory)}
+                                className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
+                                title={negotiationsEnabled && isProposalCategory(cat.id) ? `Nuova proposta: ${cat.label}` : `Aumenta ${cat.label}`}
                               >
                                 <Plus size={16} />
                               </button>
@@ -524,6 +557,7 @@ export default function EmployeeDashboard() {
           </section>
         )}
       </main>
+      {negotiationsEnabled && proposalCategory && <ProposalDialog category={proposalCategory} onClose={() => setProposalCategory(null)} />}
     </div>
   );
 }

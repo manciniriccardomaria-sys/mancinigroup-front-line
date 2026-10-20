@@ -30,7 +30,8 @@ service cloud.firestore {
           "rossellamancinigroup@gmail.com",
           "s.angelamancinigroup@gmail.com",
           "valeriamancinigroup@gmail.com",
-          "gaetanocalo73@gmail.com"
+          "gaetanocalo73@gmail.com",
+          "manciniriccardo9@gmail.com"
         ];
     }
 
@@ -42,8 +43,43 @@ service cloud.firestore {
       return isApprovedAdminEmail();
     }
 
+    function isNegotiationsPilot() {
+      return isAuthenticated() && request.auth.token.email == 'manciniriccardo9@gmail.com';
+    }
+
+    function ownsPilotId(documentId) {
+      return isNegotiationsPilot() && documentId.matches(request.auth.uid + '_.*');
+    }
+
+    function isValidNegotiationCustomer(data) {
+      return data.ownerUid == request.auth.uid &&
+        data.fiscalCode is string && data.fiscalCode.matches('^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$') &&
+        data.firstName is string && data.firstName.size() > 0 && data.firstName.size() < 100 &&
+        data.lastName is string && data.lastName.size() > 0 && data.lastName.size() < 100 &&
+        data.birthDate is string && data.birthDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidNegotiation(data) {
+      return data.keys().hasOnly([
+          'ownerUid', 'ownerName', 'fiscalCode', 'firstName', 'lastName', 'birthDate',
+          'sourceCode', 'sourceName', 'categoryId', 'proposalLabel', 'proposalDate',
+          'status', 'createdAt', 'updatedAt'
+        ]) && isValidNegotiationCustomer(data) &&
+        data.ownerName == 'Riccardo collaboratore' &&
+        data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA' &&
+        data.categoryId in [
+          'prevMotorSe', 'prevRetailSe', 'prevMotorTerzi', 'prevRetailTerzi',
+          'smeg', 'longevityCare', 'scegliAllianzGen26', 'contattiFondoPensione',
+          'contattiProtection', 'contattiEnergia', 'contattiNoleggio'
+        ] &&
+        data.proposalLabel is string && data.proposalLabel.size() > 0 && data.proposalLabel.size() < 150 &&
+        data.proposalDate is string && data.proposalDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.status in ['open', 'ko', 'ok'] && data.createdAt is timestamp;
+    }
+
     function ownsReportId(reportId) {
-      return isApprovedEmployeeEmail() &&
+      return isApprovedEmployeeEmail() && !isNegotiationsPilot() &&
         reportId.matches(request.auth.uid + '_.*');
     }
 
@@ -387,7 +423,7 @@ service cloud.firestore {
     }
 
     function employeeCanUpdateCallTask() {
-      return isApprovedEmployeeEmail() &&
+      return isApprovedEmployeeEmail() && !isNegotiationsPilot() &&
         (!('assignedToUid' in resource.data) ||
           resource.data.assignedToUid == '' ||
           resource.data.assignedToUid == request.auth.uid) &&
@@ -432,6 +468,33 @@ service cloud.firestore {
         ((ownsReportId(reportId) && request.resource.data.userId == request.auth.uid) || isAdmin());
     }
 
+    // Isolated pilot data: no entries in the operational daily reports or client archives.
+    match /negotiation_test_reports/{reportId} {
+      allow get: if ownsPilotId(reportId);
+      allow create, update: if ownsPilotId(reportId) &&
+        isValidDailyReport(request.resource.data) &&
+        request.resource.data.userId == request.auth.uid &&
+        reportId == request.auth.uid + '_' + request.resource.data.date;
+    }
+
+    match /negotiation_test_customers/{customerId} {
+      allow get: if ownsPilotId(customerId);
+      allow create, update: if ownsPilotId(customerId) &&
+        request.resource.data.keys().hasOnly(['ownerUid', 'fiscalCode', 'firstName', 'lastName', 'birthDate', 'updatedAt']) &&
+        isValidNegotiationCustomer(request.resource.data) &&
+        customerId == request.auth.uid + '_' + request.resource.data.fiscalCode;
+    }
+
+    match /negotiation_test_deals/{dealId} {
+      allow get: if ownsPilotId(dealId);
+      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
+      allow create: if ownsPilotId(dealId) && isValidNegotiation(request.resource.data) &&
+        request.resource.data.status == 'open' && request.resource.data.createdAt == request.time;
+      allow update: if ownsPilotId(dealId) && resource.data.ownerUid == request.auth.uid &&
+        isValidNegotiation(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+
     match /campaigns/{campaignId} {
       allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
@@ -462,14 +525,14 @@ service cloud.firestore {
     }
 
     match /new_clients/{clientId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isNegotiationsPilot();
       allow create, update: if isAdmin() &&
         isValidNewClient(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /expiration_records/{recordId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isNegotiationsPilot();
       allow create, update: if isAdmin() &&
         isValidExpirationRecord(request.resource.data);
       allow delete: if isAdmin();

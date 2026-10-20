@@ -63,6 +63,7 @@ import AdminCallCenter from './AdminCallCenter';
 import AdminDailyObjectives from './AdminDailyObjectives';
 import AdminReportCategories from './AdminReportCategories';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
+import { isNegotiationsPilot } from '../negotiationModel';
 
 type Tab =
   | 'analisi'
@@ -153,7 +154,7 @@ export default function AdminDashboard() {
         });
       }
 
-      const employees = synchronizedUsers.filter(u => u.role === 'employee');
+      const employees = synchronizedUsers.filter(u => u.role === 'employee' && !isNegotiationsPilot(u.email));
       setUsers(employees);
       if (!employeeSelectionInitializedRef.current) {
         setSelectedEmployees(employees.map(e => e.uid));
