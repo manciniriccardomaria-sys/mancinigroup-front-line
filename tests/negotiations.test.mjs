@@ -12,7 +12,7 @@ const customer = { fiscalCode: 'RSSMRA80A01H501U', firstName: 'Mario', lastName:
 test('only the designated test account enables proposals', () => {
   assert.equal(model.isNegotiationsPilot(' MANCINIRICCARDO9@gmail.com '), true);
   for (const email of ['manciniriccardomaria@gmail.com', 'b.marinamancinigroup@gmail.com', null, '']) assert.equal(model.isNegotiationsPilot(email), false);
-  for (const category of ['incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
+  for (const category of ['prevMotorTerzi', 'prevRetailTerzi', 'incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
 });
 
 test('customer validation rejects missing data, malformed CF and impossible or future birthdays', () => {

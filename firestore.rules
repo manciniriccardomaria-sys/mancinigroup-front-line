@@ -69,7 +69,7 @@ service cloud.firestore {
         data.ownerName == 'Riccardo collaboratore' &&
         data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA' &&
         data.categoryId in [
-          'prevMotorSe', 'prevRetailSe', 'prevMotorTerzi', 'prevRetailTerzi',
+          'prevMotorSe', 'prevRetailSe',
           'smeg', 'longevityCare', 'scegliAllianzGen26', 'contattiFondoPensione',
           'contattiProtection', 'contattiEnergia', 'contattiNoleggio'
         ] &&

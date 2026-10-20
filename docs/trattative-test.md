@@ -8,8 +8,6 @@ La password non è conservata nel repository.
 
 - Preventivi Motor (se)
 - Preventivi Retail (se)
-- Preventivi Motor (terzi)
-- Preventivi Retail (terzi)
 - SMEG
 - Longevity Care
 - ScegliAllianz
@@ -18,7 +16,7 @@ La password non è conservata nel repository.
 - Contatti Energia
 - Contatti Noleggio
 
-Consegne, emissioni, Winback, sinistri e altre operazioni mantengono i normali
+Preventivi per terzi, consegne, emissioni, Winback, sinistri e altre operazioni mantengono i normali
 contatori. Le categorie sono selezionate per ID, anche se un amministratore
 ne modifica l'etichetta. Per aggiungere altre proposte occorre aggiornare
 `PROPOSAL_CATEGORY_IDS` e la corrispondente validazione in `firestore.rules`.
