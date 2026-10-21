@@ -322,16 +322,19 @@ export default function EmployeeDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
+    <div className={`min-h-screen bg-slate-50 ${negotiationsEnabled ? 'pb-4' : 'pb-12'}`}>
       {/* Header */}
       <header className="bg-[#003781] text-white sticky top-0 z-10 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className={`max-w-7xl mx-auto px-4 flex items-center justify-between ${negotiationsEnabled ? 'h-12' : 'h-16'}`}>
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg">
               <UserIcon size={20} />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-none">{negotiationsEnabled ? employee?.name : auth.currentUser?.displayName}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-lg leading-none">{negotiationsEnabled ? employee?.name : auth.currentUser?.displayName}</h1>
+                {negotiationsEnabled && <span className="hidden lg:inline-flex rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">Test · Fonte 098</span>}
+              </div>
               <p className="text-blue-200 text-xs mt-1 flex items-center gap-1">
                 <Calendar size={12} />
                 {new Date().toLocaleDateString('it-IT', {
@@ -353,9 +356,9 @@ export default function EmployeeDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 mt-4">
+      <main className={`max-w-7xl mx-auto px-4 ${negotiationsEnabled ? 'mt-2' : 'mt-4'}`}>
         {negotiationsEnabled && (
-          <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm">
+          <div className="mb-2 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm lg:hidden">
             <strong>Profilo di test · Riccardo · Fonte 098.</strong> Prova la nuova rendicontazione. Le attività con scheda cliente vengono conteggiate al salvataggio.
           </div>
         )}
@@ -365,11 +368,11 @@ export default function EmployeeDashboard() {
           </div>
         )}
 
-        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 bg-white border border-slate-200 p-1 rounded-lg w-full sm:w-fit">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 bg-white border border-slate-200 rounded-lg w-full sm:w-fit ${negotiationsEnabled ? 'mb-2 p-0.5' : 'mb-4 p-1'}`}>
           <button
             type="button"
             onClick={() => setSelectedView('report')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
+            className={`flex items-center gap-2 rounded-md font-bold ${negotiationsEnabled ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'} ${
               selectedView === 'report'
                 ? 'bg-[#003781] text-white'
                 : 'text-slate-600 hover:bg-slate-50'
@@ -401,7 +404,7 @@ export default function EmployeeDashboard() {
           </button>}
           {negotiationsEnabled && (
             <button type="button" onClick={() => setSelectedView('negotiations')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${selectedView === 'negotiations' ? 'bg-[#003781] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold ${selectedView === 'negotiations' ? 'bg-[#003781] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
               <Handshake size={17} />Trattative
             </button>
           )}
@@ -411,17 +414,20 @@ export default function EmployeeDashboard() {
         {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab />}
 
         {selectedView === 'report' && (
-          <section className="space-y-3">
+          <section className={negotiationsEnabled ? 'space-y-2' : 'space-y-3'}>
             {!showReportHistory && objectives.enabled && report && (
-              <DailyObjectivesPanel
+              negotiationsEnabled ? <details className="rounded-lg border border-blue-200 bg-white px-3 py-1.5">
+                <summary className="cursor-pointer text-xs font-bold text-[#003781]">Obiettivi di oggi</summary>
+                <DailyObjectivesPanel objectives={objectives} report={report} categories={categories} />
+              </details> : <DailyObjectivesPanel
                 objectives={objectives}
                 report={report}
                 categories={categories}
               />
             )}
 
-            <div className={negotiationsEnabled ? 'bg-white border border-slate-200 rounded-xl px-4 py-4 flex flex-col lg:flex-row lg:items-start justify-between gap-4' : 'bg-white border border-slate-200 rounded-lg px-4 py-3'}>
-              <div className={negotiationsEnabled ? 'flex flex-wrap items-center justify-between gap-4 flex-1' : 'flex flex-col sm:flex-row sm:items-center justify-between gap-3'}>
+            <div className={negotiationsEnabled ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 flex flex-col lg:flex-row lg:items-center justify-between gap-2' : 'bg-white border border-slate-200 rounded-lg px-4 py-3'}>
+              <div className={negotiationsEnabled ? 'flex flex-wrap items-center justify-between gap-2 flex-1' : 'flex flex-col sm:flex-row sm:items-center justify-between gap-3'}>
               <div>
                 <h2 className="font-bold text-slate-800">
                   {showReportHistory ? 'Storico attività svolte' : 'Rendicontazione giornaliera'}

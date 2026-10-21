@@ -54,18 +54,20 @@ export default function PilotWinbackSummary({ date, today }: { date: string; tod
     finally { savingRef.current = false; setSaving(false); }
   };
   return (
-    <aside aria-label="Riepilogo Winback" className="w-full sm:max-w-md rounded-xl border border-blue-200 bg-blue-50/60">
-      <button type="button" aria-expanded={expanded} aria-controls="pilot-winback-register" onClick={() => setExpanded(value => !value)} className="w-full p-3 text-left flex items-start gap-3 rounded-xl hover:bg-blue-100/50">
-        <PhoneCall size={18} className="mt-0.5 text-[#003781] shrink-0" />
+    <aside aria-label="Riepilogo Winback" className="relative w-full lg:w-[260px] lg:shrink-0 rounded-lg border border-blue-200 bg-blue-50/60">
+      <button type="button" aria-expanded={expanded} aria-controls="pilot-winback-register" onClick={() => setExpanded(value => !value)} className="w-full p-2 text-left flex items-center gap-2 rounded-lg hover:bg-blue-100/50">
+        <PhoneCall size={16} className="text-[#003781] shrink-0" />
         <span className="flex-1">
-          <span className="block text-[11px] uppercase tracking-wider font-bold text-[#003781]">Winback · {date === today ? 'oggi' : date.split('-').reverse().join('/')}</span>
-          <span role="status" className="block text-lg font-bold text-slate-800 mt-0.5">{loadError ? 'Dati non disponibili' : loading ? 'Caricamento…' : `${summary.calls} ${summary.calls === 1 ? 'chiamata registrata' : 'chiamate registrate'}`}</span>
-          {!loading && !loadError && <span className="block text-xs text-slate-600">{summary.reached} {summary.reached === 1 ? 'cliente raggiunto' : 'clienti raggiunti'} · {summary.recovered} {summary.recovered === 1 ? 'cliente recuperato' : 'clienti recuperati'}</span>}
-          <span className="block text-[11px] text-blue-700 mt-1">Registro del profilo di test · {expanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}</span>
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-[10px] uppercase font-bold text-[#003781]">Winback · {date === today ? 'oggi' : date.split('-').reverse().join('/')}</span>
+            <span role="status" className="text-xs font-bold text-slate-800">{loadError ? 'Non disponibile' : loading ? 'Caricamento…' : `${summary.calls} ${summary.calls === 1 ? 'chiamata' : 'chiamate'}`}</span>
+          </span>
+          {!loading && !loadError && <span className="block text-[11px] text-slate-600 mt-0.5">{summary.reached} raggiunti · {summary.recovered} recuperati</span>}
+          <span className="sr-only">Registro del profilo di test · {expanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}</span>
         </span>
         <ChevronDown size={16} className={`mt-1 text-blue-700 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
-      {expanded && <div id="pilot-winback-register" className="border-t border-blue-200 p-3 space-y-3">
+      {expanded && <div id="pilot-winback-register" className="border border-blue-200 rounded-lg bg-white p-3 space-y-3 lg:absolute lg:right-0 lg:top-full lg:z-20 lg:mt-2 lg:w-96 lg:max-h-[65vh] lg:overflow-y-auto lg:shadow-xl">
         <p className="text-xs text-slate-600">Registra ogni chiamata realmente effettuata. Correggere l’esito mantiene una sola chiamata nel conteggio. Il registro di prova conserva fonte e operatore; le schede operative restano in sola lettura.</p>
         {(loadError || tasksError || saveError) && <p role="alert" className="text-xs text-red-700">{loadError || tasksError || saveError}</p>}
         {date === today && !loadError && <form onSubmit={saveCall} className="space-y-2">
