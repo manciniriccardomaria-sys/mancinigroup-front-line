@@ -11,9 +11,8 @@ La password non è conservata nel repository.
 - ULTRA Casa · proposte
 - ULTRA Impresa · proposte
 - SMEG
-- Longevity Care
+- Protection → Longevity Care oppure Lovia
 - Contatti Fondo Pensione
-- Lovia · proposte (precedentemente Protection)
 - Contatti Energia
 - Contatti Noleggio
 - Vitariv · consegne (scheda cliente, senza apertura di una trattativa)
@@ -34,8 +33,11 @@ Vitariv/consegne, ScegliAllianz/consegne e Recensioni sono in Promozione.
 La sezione “Voci precedenti” è rimossa dalla schermata giornaliera; i vecchi
 contatori Retail e Winback manuali restano nello storico, senza ripartizioni
 presunte tra prodotti. ScegliAllianz/proposte è rimosso, mentre rimane la
-consegna. Protection diventa Lovia, nel gruppo Preventivi e proposte, mantenendo
-l'ID del contatore esistente per conservare le attività già registrate.
+consegna. Protection riunisce Longevity Care e Lovia nel gruppo Preventivi e
+proposte. Il + apre la scelta del prodotto, poi la scheda cliente. Il totale
+mostrato somma i due contatori; i salvataggi e lo storico conservano gli ID
+`longevityCare` e `contattiProtection` e il prodotto scelto. Le righe non hanno
+evidenziazioni verdi; il bordo di Emissione e gli indicatori usano il blu.
 Le proposte e la consegna Vitariv richiedono la scheda cliente e non mostrano il meno; le altre
 attività conservano i contatori manuali. Le voci “Contatti” già collegate
 alla scheda cliente mantengono il flusso esistente.

@@ -3,6 +3,7 @@ import type { ReportCategory, ReportIconId } from './reportCatalog';
 export type PilotReportCategory = ReportCategory & {
   activity: string;
   group?: string;
+  proposalOptions?: PilotReportCategory[];
 };
 
 function item(id: string, label: string, activity: string, iconKey: ReportIconId, group?: string): PilotReportCategory {
@@ -30,8 +31,13 @@ export const PILOT_REPORT_SECTIONS = [
       item('smeg', 'SMEG', 'Proposte presentate', 'store', 'Preventivi e proposte'),
       item('prevUltraCasa', 'ULTRA Casa', 'Proposte presentate', 'home', 'Preventivi e proposte'),
       item('prevUltraImpresa', 'ULTRA Impresa', 'Proposte presentate', 'briefcase', 'Preventivi e proposte'),
-      item('longevityCare', 'Longevity Care', 'Proposte presentate', 'heart', 'Preventivi e proposte'),
-      item('contattiProtection', 'Lovia', 'Proposte presentate', 'shield-check', 'Preventivi e proposte'),
+      {
+        ...item('protection', 'Protection', 'Proposte presentate', 'shield-check', 'Preventivi e proposte'),
+        proposalOptions: [
+          item('longevityCare', 'Longevity Care', 'Proposte presentate', 'heart', 'Preventivi e proposte'),
+          item('contattiProtection', 'Lovia', 'Proposte presentate', 'shield-check', 'Preventivi e proposte'),
+        ],
+      },
       item('contattiFondoPensione', 'Fondo pensione', 'Contatti commerciali', 'piggy-bank', 'Contatti, consegne e recensioni'),
       item('contattiEnergia', 'Energia', 'Contatti commerciali', 'zap', 'Contatti, consegne e recensioni'),
       item('contattiNoleggio', 'Noleggio', 'Contatti commerciali', 'key', 'Contatti, consegne e recensioni'),
@@ -42,7 +48,7 @@ export const PILOT_REPORT_SECTIONS = [
   },
   {
     id: 'issuance', title: 'Emissione', description: 'Contratti effettivamente emessi',
-    color: 'border-t-emerald-500', iconKey: 'file-check' as ReportIconId,
+    color: 'border-t-blue-500', iconKey: 'file-check' as ReportIconId,
     categories: [
       item('emissMotorSe', 'Motor', 'Contratti emessi', 'car'),
       item('emissUltraSalute', 'ULTRA Salute', 'Contratti emessi', 'heart'),
@@ -64,7 +70,10 @@ export const PILOT_REPORT_SECTIONS = [
   },
 ];
 
-export const PILOT_REPORT_CATEGORIES = PILOT_REPORT_SECTIONS.flatMap(section => section.categories);
+// Keep the original product IDs for saved activities, objectives and history.
+export const PILOT_REPORT_CATEGORIES = PILOT_REPORT_SECTIONS.flatMap(section =>
+  section.categories.flatMap((category: PilotReportCategory) => category.proposalOptions ?? [category])
+);
 export const PILOT_RETIRED_CATEGORIES: ReportCategory[] = [
   item('prevRetailSe', 'Preventivi Retail · precedente classificazione', '', 'home'),
   item('emissRetailSe', 'Emissioni Retail · precedente classificazione', '', 'file-check'),

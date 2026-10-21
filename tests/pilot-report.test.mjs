@@ -26,13 +26,20 @@ test('the pilot has exactly four sections, unique counters and all agreed produc
   for (const id of ['emissUltraSalute', 'prevUltraCasaTerzi', 'prevSmegTerzi']) assert.equal(model.isProposalCategory(id), false);
 });
 
-test('Lovia preserves the Protection counter ID and moves to proposals; Vitariv requires a customer without becoming a proposal', () => {
+test('Protection groups the two products while preserving their saved counters; Vitariv remains a separate customer activity', () => {
   const promotion = catalog.PILOT_REPORT_SECTIONS[1].categories;
-  const lovia = promotion.find(category => category.id === 'contattiProtection');
+  const protection = promotion.find(category => category.id === 'protection');
+  assert.equal(protection.label, 'Protection');
+  assert.deepEqual(protection.proposalOptions.map(category => [category.id, category.label]), [
+    ['longevityCare', 'Longevity Care'], ['contattiProtection', 'Lovia'],
+  ]);
+  assert.equal(promotion.some(category => ['contattiProtection', 'longevityCare'].includes(category.id)), false);
+  assert.equal(catalog.PILOT_REPORT_CATEGORIES.some(category => category.id === 'protection'), false);
+  for (const option of protection.proposalOptions) assert.equal(model.isProposalCategory(option.id), true);
+  const lovia = catalog.PILOT_REPORT_CATEGORIES.find(category => category.id === 'contattiProtection');
   assert.equal(lovia.label, 'Lovia');
   assert.equal(lovia.activity, 'Proposte presentate');
   assert.equal(lovia.group, 'Preventivi e proposte');
-  assert.equal(promotion.some(category => category.label === 'Protection'), false);
   assert.equal(model.isCustomerActivityCategory('vitarivConsegna'), true);
   assert.equal(model.isProposalCategory('vitarivConsegna'), false);
   assert.equal(model.isCustomerActivityCategory('scegliAllianzGen26'), false);

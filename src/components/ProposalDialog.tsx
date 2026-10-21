@@ -122,7 +122,7 @@ export default function ProposalDialog({ category, onClose }: { category: Report
                 setError('');
               }} className={`${inputClass} mt-1 uppercase`} />
           </label>
-          <div aria-live="polite" className={`text-xs rounded-lg ${lookupStatus === 'found' ? 'text-emerald-800 bg-emerald-50 p-3' : lookupStatus === 'error' ? 'text-amber-800 bg-amber-50 p-3' : 'text-slate-500'}`}>
+          <div aria-live="polite" className={`text-xs rounded-lg ${lookupStatus === 'found' ? 'text-blue-800 bg-blue-50 p-3' : lookupStatus === 'error' ? 'text-amber-800 bg-amber-50 p-3' : 'text-slate-500'}`}>
             {lookupStatus === 'searching' ? <span className="flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Ricerca cliente nel database...</span> : lookupNote || 'L’anagrafica si compila automaticamente se il cliente è già presente.'}
             {lookupStatus === 'error' && <button type="button" onClick={() => setLookupAttempt(previous => previous + 1)} className="block mt-2 font-bold underline">Riprova ricerca</button>}
           </div>

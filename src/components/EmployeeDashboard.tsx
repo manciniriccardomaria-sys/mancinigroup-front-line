@@ -441,7 +441,7 @@ export default function EmployeeDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 {!showReportHistory && (
                   <span className={`text-xs font-bold whitespace-nowrap ${
-                    saving ? 'text-blue-600 animate-pulse' : 'text-emerald-600'
+                    saving ? 'text-blue-600 animate-pulse' : 'text-slate-500'
                   }`}>
                     {saving ? 'Salvataggio...' : 'Dati salvati'}
                   </span>
@@ -558,7 +558,7 @@ export default function EmployeeDashboard() {
                               <button
                                 onClick={() => negotiationsEnabled && isProposalCategory(cat.id) ? setProposalCategory(cat) : updateCount(cat.id, 1)}
                                 disabled={saving || Boolean(proposalCategory)}
-                                className="p-1.5 hover:bg-white hover:text-green-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
+                                className="p-1.5 hover:bg-white hover:text-blue-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
                                 title={negotiationsEnabled && isProposalCategory(cat.id) ? `Nuova proposta: ${cat.label}` : `Aumenta ${cat.label}`}
                               >
                                 <Plus size={16} />
@@ -631,14 +631,14 @@ function DailyObjectivesPanel({
                   </span>
                 </div>
                 <span className={`text-sm font-black whitespace-nowrap ${
-                  current >= target ? 'text-emerald-600' : 'text-[#003781]'
+                  current >= target ? 'text-blue-600' : 'text-[#003781]'
                 }`}>
                   {current}/{target}
                 </span>
               </div>
               <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  className={current >= target ? 'h-full bg-emerald-500' : 'h-full bg-[#003781]'}
+                  className={current >= target ? 'h-full bg-blue-500' : 'h-full bg-[#003781]'}
                   style={{ width: `${progress}%` }}
                 />
               </div>
