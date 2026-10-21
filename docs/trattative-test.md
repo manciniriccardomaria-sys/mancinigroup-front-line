@@ -27,12 +27,31 @@ Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
 Proposta e data italiana sono precompilate e non modificabili. La fonte è
 quella assegnata al collaboratore. Annullare non registra alcuna attività.
 
-Il codice fiscale cerca prima le anagrafiche già inserite nel test, poi gli
-archivi `new_clients`, `call_tasks` ed `expiration_records`, senza modificarli.
-Gli import conservano spesso un unico campo `Cognome Nome`: in quel caso i
-campi sono compilati con una separazione iniziale e viene chiesto di
-verificarli, soprattutto per i cognomi composti. I dati mancanti restano
-da completare. `customer_clusters` non contiene il CF e non viene interrogato.
+Il codice fiscale cerca prima le anagrafiche già inserite nel test, poi
+l'anagrafica generale `customer_registry`, con lettura diretta del documento
+identificato dal CF. Solo se il cliente non è presente usa gli archivi
+`new_clients`, `call_tasks` ed `expiration_records`, senza modificarli.
+Gli import dell'anagrafica generale separano `Cognome Nome` verificando le
+lettere del CF, anche per i cognomi composti. Le separazioni incerte vengono
+segnalate e restano correggibili. I CF associati a dati discordanti sono
+riconosciuti ma richiedono la compilazione manuale dopo verifica. I dati
+mancanti restano da completare. `customer_clusters` non contiene il CF e non
+viene interrogato.
+
+Gli amministratori possono aggiornare l'elenco in **Importazioni → Anagrafica
+clienti**, caricando l'export “Tutti i clienti” in formato `.xlsx`. Il pannello
+mostra analisi, duplicati, anomalie, progresso, ultimo import e una ricerca
+CF/P.IVA sul dato effettivamente memorizzato. Le partite IVA sono conservate
+nell'archivio; la finestra delle proposte continua a richiedere il CF di una
+persona fisica.
+
+L'import salva esclusivamente identificativo, nominativo, nascita, fonte,
+stato e provenienza della riga. Non importa i dati economici, le coperture,
+le informazioni sui sinistri o i consensi dell'export e non genera chiamate.
+Ogni identificativo ha un documento unico. Ricaricare lo stesso file non
+crea duplicati, mentre un file aggiornato modifica le anagrafiche presenti
+senza cancellare quelle assenti dal nuovo elenco. I gruppi discordanti
+conservano le varianti per la verifica dell'amministratore.
 
 Un'unica transazione salva anagrafica, trattativa e incremento del report.
 Ritentare lo stesso salvataggio non duplica la proposta. Il meno delle

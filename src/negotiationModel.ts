@@ -30,6 +30,7 @@ export type CustomerDetails = {
 export type CustomerMatch = CustomerDetails & {
   needsNameReview: boolean;
   originalName: string;
+  notice?: string;
 };
 export type Negotiation = CustomerDetails & {
   id: string;
@@ -72,6 +73,11 @@ export function daysSinceProposal(proposalDate: string, today: string): number {
 }
 
 export function customerMatchFromRecord(record: Record<string, unknown>): CustomerMatch {
+  if (record.hasConflicts === true) return {
+    fiscalCode: normalizeFiscalCode(String(record.fiscalCode || '')),
+    firstName: '', lastName: '', birthDate: '', needsNameReview: true, originalName: '',
+    notice: 'Il CF è presente nell’archivio con anagrafiche discordanti. Verifica il cliente e compila i dati corretti.',
+  };
   const originalName = typeof record.clientName === 'string' ? record.clientName.trim() : '';
   const firstName = typeof record.firstName === 'string' ? record.firstName : '';
   const lastName = typeof record.lastName === 'string' ? record.lastName : '';
@@ -83,7 +89,7 @@ export function customerMatchFromRecord(record: Record<string, unknown>): Custom
     firstName: hasSeparateNames ? firstName : parts.slice(1).join(' '),
     lastName: hasSeparateNames ? lastName : parts[0] || '',
     birthDate: typeof record.birthDate === 'string' && isCalendarDate(record.birthDate) ? record.birthDate : '',
-    needsNameReview: !hasSeparateNames,
+    needsNameReview: record.needsNameReview === true || !hasSeparateNames,
     originalName,
   };
 }

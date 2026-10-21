@@ -45,9 +45,9 @@ export default function ProposalDialog({ category, onClose }: { category: Report
         if (match) {
           setCustomer(previous => ({ ...previous, firstName: match.firstName, lastName: match.lastName, birthDate: match.birthDate }));
           setLookupStatus('found');
-          setLookupNote(match.needsNameReview
+          setLookupNote(match.notice || (match.needsNameReview
             ? `Cliente trovato: ${match.originalName}. Verifica la separazione di nome e cognome${match.birthDate ? '.' : ' e completa la data di nascita.'}`
-            : 'Anagrafica trovata e compilata. Puoi correggere i dati prima di salvare.');
+            : `Anagrafica trovata e compilata. ${match.birthDate ? 'Puoi correggere i dati prima di salvare.' : 'Completa la data di nascita mancante.'}`));
         } else {
           setLookupStatus('missing');
           setLookupNote('Cliente non trovato. Compila l’anagrafica per questa proposta.');

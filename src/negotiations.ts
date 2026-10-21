@@ -6,6 +6,7 @@ import { auth, db } from './firebase';
 import { getAuthorizedEmployee, getReportCategoryValue, type DailyReport } from './constants';
 import { getItalyDate } from './lib/utils';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
+import { CUSTOMER_REGISTRY_COLLECTION } from './customerRegistryModel';
 import {
   customerMatchFromRecord, isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
   NEGOTIATIONS_COLLECTION, NEGOTIATION_CUSTOMERS_COLLECTION, normalizeFiscalCode,
@@ -30,12 +31,18 @@ export async function findNegotiationCustomer(fiscalCode: string): Promise<Custo
   if (!isValidFiscalCode(normalized)) return null;
   const saved = await getDoc(doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${normalized}`));
   if (saved.exists()) return customerMatchFromRecord(saved.data());
+  const registry = await getDoc(doc(db, CUSTOMER_REGISTRY_COLLECTION, normalized));
+  if (registry.exists()) return customerMatchFromRecord(registry.data());
 
-  const snapshots = await Promise.all(['new_clients', 'call_tasks', 'expiration_records'].map(name =>
+  const snapshots = await Promise.allSettled(['new_clients', 'call_tasks', 'expiration_records'].map(name =>
     getDocs(query(collection(db, name), where('fiscalCode', '==', normalized), limit(10)))
   ));
-  const matches = snapshots.flatMap(snapshot => snapshot.docs.map(item => customerMatchFromRecord(item.data())));
-  if (matches.length === 0) return null;
+  const matches = snapshots.flatMap(result => result.status === 'fulfilled' ? result.value.docs.map(item => customerMatchFromRecord(item.data())) : []);
+  if (matches.length === 0) {
+    const failed = snapshots.find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+    return null;
+  }
   const preferred = matches.find(match => match.birthDate) || matches[0];
   return {
     ...preferred,

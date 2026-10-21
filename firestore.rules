@@ -545,6 +545,36 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /customer_registry/{identifier} {
+      allow get: if isAdmin() || (isNegotiationsPilot() && identifier.matches('^[A-Z0-9]{16}$'));
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() &&
+        request.resource.data.keys().hasAll([
+          'fiscalCode', 'identifierKind', 'clientName', 'firstName', 'lastName', 'birthDate',
+          'needsNameReview', 'hasConflicts', 'alternatives', 'sourceCodes', 'clientStatuses',
+          'sourceRows', 'sourceFingerprint', 'sourceFileName', 'importedAt', 'importedBy'
+        ]) &&
+        request.resource.data.fiscalCode == identifier &&
+        ((request.resource.data.identifierKind == 'person' && identifier.matches('^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$')) ||
+          (request.resource.data.identifierKind == 'company' && identifier.matches('^\\d{11}$'))) &&
+        request.resource.data.clientName is string && request.resource.data.clientName.size() > 0 && request.resource.data.clientName.size() < 250 &&
+        request.resource.data.firstName is string && request.resource.data.firstName.size() < 100 &&
+        request.resource.data.lastName is string && request.resource.data.lastName.size() < 100 &&
+        isOptionalDateString(request.resource.data.birthDate) &&
+        request.resource.data.needsNameReview is bool && request.resource.data.hasConflicts is bool &&
+        (!request.resource.data.hasConflicts || (request.resource.data.firstName == '' && request.resource.data.lastName == '' && request.resource.data.birthDate == '')) &&
+        request.resource.data.alternatives is list && request.resource.data.sourceCodes is list &&
+        request.resource.data.clientStatuses is list && request.resource.data.sourceRows is list &&
+        request.resource.data.sourceFingerprint is string && request.resource.data.sourceFileName is string &&
+        request.resource.data.importedBy == request.auth.token.email && request.resource.data.importedAt == request.time;
+    }
+
+    match /customer_registry_meta/{summaryId} {
+      allow get: if isAdmin();
+      allow create, update: if isAdmin() && summaryId == 'current' &&
+        request.resource.data.importedBy == request.auth.token.email && request.resource.data.importedAt == request.time;
+    }
+
     match /import_runs/{runId} {
       allow read, create: if isAdmin();
     }

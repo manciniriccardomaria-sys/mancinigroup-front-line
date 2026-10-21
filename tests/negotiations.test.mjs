@@ -63,6 +63,7 @@ const firestoreMock = {
       export const getDoc = async ref => snap(globalThis.negotiationStore[key(ref)]);
       export const getDocs = async q => {
         globalThis.negotiationReads.push(q);
+        if (globalThis.negotiationReadFailures?.includes(q.name)) throw new Error('archive unavailable');
         return { docs: (globalThis.importedCustomers[q.name] || []).map(data => ({ data: () => data })) };
       };
       export const onSnapshot = () => () => {};
@@ -85,6 +86,7 @@ function reset() {
   globalThis.negotiationWrites = [];
   globalThis.negotiationReads = [];
   globalThis.importedCustomers = {};
+  globalThis.negotiationReadFailures = [];
   globalThis.failNegotiationCommit = false;
 }
 const proposal = () => ({ id: 'pilot_deal-1', customer, categoryId: 'smeg', proposalLabel: 'SMEG', proposalDate: getItalyDate(), sourceCode: '098', sourceName: 'MANCINI RICCARDO MARIA' });
@@ -143,4 +145,23 @@ test('OK/KO updates the outcome without changing proposal dates or counters', as
   reset();
   await service.setNegotiationStatus('pilot_deal-1', 'ok');
   assert.deepEqual(globalThis.negotiationWrites, [{ ref: { name: 'negotiation_test_deals', id: 'pilot_deal-1' }, data: { status: 'ok', updatedAt: 'server-time' } }]);
+});
+
+test('the master registry supplies compound names directly without scanning campaign archives', async () => {
+  reset();
+  globalThis.negotiationStore['customer_registry/' + customer.fiscalCode] = { ...customer, lastName: 'De Rossi', clientName: 'DE ROSSI MARIO', needsNameReview: false };
+  const found = await service.findNegotiationCustomer(customer.fiscalCode);
+  assert.equal(found.lastName, 'De Rossi'); assert.equal(found.needsNameReview, false);
+  assert.equal(globalThis.negotiationReads.length, 0);
+  globalThis.negotiationStore['customer_registry/' + customer.fiscalCode].hasConflicts = true;
+  const conflict = await service.findNegotiationCustomer(customer.fiscalCode);
+  assert.equal(conflict.firstName, ''); assert.equal(conflict.birthDate, ''); assert.match(conflict.notice, /discordanti/);
+});
+
+test('a failed legacy archive cannot hide a client found in another archive', async () => {
+  reset(); globalThis.negotiationReadFailures = ['new_clients'];
+  globalThis.importedCustomers = { call_tasks: [{ ...customer, clientName: 'ROSSI MARIO' }] };
+  assert.equal((await service.findNegotiationCustomer(customer.fiscalCode)).firstName, 'Mario');
+  globalThis.importedCustomers = {};
+  await assert.rejects(service.findNegotiationCustomer(customer.fiscalCode), /archive unavailable/);
 });

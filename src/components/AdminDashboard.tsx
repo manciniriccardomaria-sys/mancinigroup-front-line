@@ -59,6 +59,7 @@ import {
 } from 'date-fns';
 import { it } from 'date-fns/locale';
 import AdminImportPanel from './AdminImportPanel';
+import CustomerRegistryPanel from './CustomerRegistryPanel';
 import AdminCallCenter from './AdminCallCenter';
 import AdminDailyObjectives from './AdminDailyObjectives';
 import AdminReportCategories from './AdminReportCategories';
@@ -1038,7 +1039,7 @@ export default function AdminDashboard() {
 
           {selectedTab === 'chiamate' && <AdminCallCenter />}
 
-          {selectedTab === 'importazioni' && <AdminImportPanel />}
+          {selectedTab === 'importazioni' && <div className="space-y-5"><CustomerRegistryPanel /><AdminImportPanel /></div>}
 
           {selectedTab === 'rendicontazione' && <AdminReportCategories categories={categories} />}
 
