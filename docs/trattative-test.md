@@ -7,7 +7,9 @@ La password non è conservata nel repository.
 ## Attività collegate
 
 - Preventivi Motor (se)
-- Preventivi Retail (se)
+- ULTRA Salute · proposte
+- ULTRA Casa · proposte
+- ULTRA Impresa · proposte
 - SMEG
 - Longevity Care
 - ScegliAllianz
@@ -16,10 +18,42 @@ La password non è conservata nel repository.
 - Contatti Energia
 - Contatti Noleggio
 
-Preventivi per terzi, consegne, emissioni, Winback, sinistri e altre operazioni mantengono i normali
+Preventivi per terzi, consegne, emissioni, sinistri e altre operazioni mantengono i normali
 contatori. Le categorie sono selezionate per ID, anche se un amministratore
 ne modifica l'etichetta. Per aggiungere altre proposte occorre aggiornare
 `PROPOSAL_CATEGORY_IDS` e la corrispondente validazione in `firestore.rules`.
+
+## Rendicontazione giornaliera del profilo di test
+
+Il catalogo locale `pilotReportCatalog.ts` mostra esclusivamente a Riccardo
+quattro riquadri: **Ricezione, Promozione, Emissione, Terzi**. Il catalogo
+condiviso `report_categories` e i report degli altri operatori non cambiano.
+Le voci Retail vengono sostituite da ULTRA Salute, SMEG, ULTRA Casa e ULTRA
+Impresa, con contatori distinti per proposta, emissione e preventivo per terzi.
+Vitariv/consegne, ScegliAllianz/consegne e Recensioni sono in Promozione.
+I vecchi contatori Retail e Winback manuali restano in sola lettura sotto
+“Voci precedenti” e nello storico, senza ripartizioni presunte tra prodotti.
+Le proposte mantengono la scheda cliente e non mostrano il meno; le altre
+attività conservano i contatori manuali. Le voci “Contatti” già collegate
+alla scheda cliente mantengono il flusso esistente.
+
+### Winback automatico nel test
+
+La scheda in alto a destra deriva i totali dal registro isolato
+`pilot_winback_calls`, filtrando per operatore e giornata italiana. Il
+dettaglio permette di registrare una chiamata effettivamente effettuata
+su una scheda Winback reale della fonte 098 o assegnata al collaboratore.
+Salvare aggiorna solo il registro di test, mai `call_tasks` o i report
+operativi. Le regole verificano cliente e fonte contro la scheda reale.
+
+Ogni chiamata è un evento con un ID stabile per i tentativi di salvataggio:
+ritentare non duplica il conteggio. Correggere l’esito modifica lo stesso
+evento, preservando giorno, operatore, cliente e fonte. Chiamate ripetute
+sono eventi distinti; raggiunti e recuperati contano clienti unici, anche
+quando presenti su più polizze. Il riepilogo è disponibile anche nello
+storico. Gli eventi precedenti all'attivazione del registro non vengono
+ricostruiti dallo stato corrente delle chiamate e non vengono confusi con
+il vecchio contatore manuale. Nessun dato dimostrativo viene inserito online.
 
 ## Funzionamento
 

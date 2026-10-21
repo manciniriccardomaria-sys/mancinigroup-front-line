@@ -13,6 +13,7 @@ import {
 } from '../constants';
 import {
   ReportCategory,
+  DEFAULT_REPORT_CATEGORIES,
   getReportCategoryIcon,
   useReportCategories,
 } from '../reportCatalog';
@@ -44,6 +45,9 @@ import { isNegotiationsPilot, isProposalCategory, PILOT_REPORTS_COLLECTION } fro
 import ProposalDialog from './ProposalDialog';
 import NegotiationsTab from './NegotiationsTab';
 import { adjustPilotReportCount } from '../negotiations';
+import PilotDailyReport from './PilotDailyReport';
+import PilotWinbackSummary from './PilotWinbackSummary';
+import { PILOT_REPORT_CATEGORIES, PILOT_RETIRED_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -66,13 +70,20 @@ export default function EmployeeDashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
   const {
-    categories,
+    categories: storedCategories,
     sections,
     loading: categoriesLoading,
   } = useReportCategories();
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
   const negotiationsEnabled = isNegotiationsPilot(auth.currentUser?.email);
   const reportsCollection = negotiationsEnabled ? PILOT_REPORTS_COLLECTION : 'daily_reports';
+  const categories = useMemo(() => negotiationsEnabled
+    ? PILOT_REPORT_CATEGORIES.map(category => ({ ...category, label: pilotActivityLabel(category) }))
+    : storedCategories, [negotiationsEnabled, storedCategories]);
+  const historyCategories = useMemo(() => negotiationsEnabled
+    ? [...new Map([...DEFAULT_REPORT_CATEGORIES, ...storedCategories, ...categories, ...PILOT_RETIRED_CATEGORIES]
+      .map(category => [category.id, category])).values()]
+    : categories, [negotiationsEnabled, storedCategories, categories]);
 
   useEffect(() => {
     const updateDate = () => setToday(getItalyDate());
@@ -345,7 +356,7 @@ export default function EmployeeDashboard() {
       <main className="max-w-7xl mx-auto px-4 mt-4">
         {negotiationsEnabled && (
           <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm">
-            <strong>Test trattative · Fonte 098.</strong> Proposte e contatori di questo account sono separati dai report operativi. Il + sulle proposte apre la scheda cliente; il conteggio aumenta al salvataggio. Gestisci gli esiti nel tab Trattative.
+            <strong>Profilo di test · Riccardo · Fonte 098.</strong> Prova la nuova rendicontazione. Le attività con scheda cliente vengono conteggiate al salvataggio.
           </div>
         )}
         {error && (
@@ -409,7 +420,8 @@ export default function EmployeeDashboard() {
               />
             )}
 
-            <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className={negotiationsEnabled ? 'bg-white border border-slate-200 rounded-xl px-4 py-4 flex flex-col lg:flex-row lg:items-start justify-between gap-4' : 'bg-white border border-slate-200 rounded-lg px-4 py-3'}>
+              <div className={negotiationsEnabled ? 'flex flex-wrap items-center justify-between gap-4 flex-1' : 'flex flex-col sm:flex-row sm:items-center justify-between gap-3'}>
               <div>
                 <h2 className="font-bold text-slate-800">
                   {showReportHistory ? 'Storico attività svolte' : 'Rendicontazione giornaliera'}
@@ -441,6 +453,8 @@ export default function EmployeeDashboard() {
                   {showReportHistory ? 'Torna a oggi' : 'Vedi storico'}
                 </button>
               </div>
+              </div>
+              {negotiationsEnabled && <PilotWinbackSummary date={showReportHistory ? historyDate : today} today={today} />}
             </div>
 
             {showReportHistory ? (
@@ -475,7 +489,7 @@ export default function EmployeeDashboard() {
                     {historyError}
                   </div>
                 ) : historyReport ? (
-                  <HistoricalActivities report={historyReport} categories={categories} />
+                  <HistoricalActivities report={historyReport} categories={historyCategories} />
                 ) : (
                   <div className="py-14 px-4 text-center">
                     <History size={28} className="mx-auto text-slate-300 mb-2" />
@@ -486,6 +500,9 @@ export default function EmployeeDashboard() {
                   </div>
                 )}
               </section>
+            ) : negotiationsEnabled ? (
+              <PilotDailyReport report={report} saving={saving} proposalOpen={Boolean(proposalCategory)} onAdjust={updateCount}
+                onProposal={category => setProposalCategory({ ...category, label: pilotActivityLabel(category) })} />
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
                 {sections.map(section => (

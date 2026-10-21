@@ -69,7 +69,7 @@ service cloud.firestore {
         data.ownerName == 'Riccardo collaboratore' &&
         data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA' &&
         data.categoryId in [
-          'prevMotorSe', 'prevRetailSe',
+          'prevMotorSe', 'prevRetailSe', 'prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa',
           'smeg', 'longevityCare', 'scegliAllianzGen26', 'contattiFondoPensione',
           'contattiProtection', 'contattiEnergia', 'contattiNoleggio'
         ] &&
@@ -81,6 +81,28 @@ service cloud.firestore {
     function ownsReportId(reportId) {
       return isApprovedEmployeeEmail() && !isNegotiationsPilot() &&
         reportId.matches(request.auth.uid + '_.*');
+    }
+
+    function isValidPilotWinbackCall(data) {
+      return data.keys().hasOnly([
+          'ownerUid', 'taskId', 'customerKey', 'clientName', 'sourceCode', 'sourceName',
+          'calledDate', 'outcome', 'createdAt', 'updatedAt'
+        ]) && data.ownerUid == request.auth.uid &&
+        data.taskId is string && data.taskId.size() > 0 && data.taskId.size() < 200 &&
+        data.customerKey is string && data.customerKey.size() > 0 && data.customerKey.size() < 350 &&
+        data.clientName is string && data.clientName.size() > 0 && data.clientName.size() < 250 &&
+        data.sourceCode is string && data.sourceName is string &&
+        data.calledDate is string && data.calledDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.outcome in ['reached', 'not_reached', 'recovered'] &&
+        data.createdAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function matchesRealWinbackTask(data) {
+      let task = get(/databases/$(database)/documents/call_tasks/$(data.taskId)).data;
+      return task.category == 'winback' &&
+        (task.sourceCode == '098' || ('assignedToUid' in task && task.assignedToUid == request.auth.uid)) &&
+        data.clientName == task.clientName && data.sourceCode == task.sourceCode && data.sourceName == task.sourceName &&
+        data.customerKey == (task.fiscalCode != '' ? task.fiscalCode : task.sourceCode + '|' + task.clientName);
     }
 
     function roleMatchesApprovedEmail(data) {
@@ -493,6 +515,17 @@ service cloud.firestore {
       allow update: if ownsPilotId(dealId) && resource.data.ownerUid == request.auth.uid &&
         isValidNegotiation(request.resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+
+    // The report pilot only reads operational calls; its event log is isolated.
+    match /pilot_winback_calls/{callId} {
+      allow get: if ownsPilotId(callId);
+      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
+      allow create: if ownsPilotId(callId) && isValidPilotWinbackCall(request.resource.data) &&
+        request.resource.data.createdAt == request.time && matchesRealWinbackTask(request.resource.data);
+      allow update: if ownsPilotId(callId) && resource.data.ownerUid == request.auth.uid &&
+        isValidPilotWinbackCall(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['outcome', 'updatedAt']);
     }
 
     match /campaigns/{campaignId} {

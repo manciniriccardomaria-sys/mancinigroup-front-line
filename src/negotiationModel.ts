@@ -11,7 +11,7 @@ export function isNegotiationsPilot(email: string | null | undefined): boolean {
 
 // Explicit IDs: deliveries, emissions and calls do not constitute a proposal.
 export const PROPOSAL_CATEGORY_IDS = [
-  'prevMotorSe', 'prevRetailSe',
+  'prevMotorSe', 'prevRetailSe', 'prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa',
   'smeg', 'longevityCare', 'scegliAllianzGen26',
   'contattiFondoPensione', 'contattiProtection', 'contattiEnergia', 'contattiNoleggio',
 ] as const;

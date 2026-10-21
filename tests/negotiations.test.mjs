@@ -118,6 +118,16 @@ test('other pilot counters preserve proposal counts and never become negative', 
   await service.adjustPilotReportCount('incassi', -1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
   await assert.rejects(service.adjustPilotReportCount('smeg', -1));
+  for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
+});
+
+test('each new ULTRA proposal records its own product without changing the legacy Retail total', async () => {
+  reset();
+  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { prevRetailSe: 5 } };
+  for (const categoryId of ['prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa']) {
+    await service.saveNegotiation({ ...proposal(), id: `pilot_${categoryId}`, categoryId, proposalLabel: categoryId });
+  }
+  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { prevRetailSe: 5, prevUltraSalute: 1, prevUltraCasa: 1, prevUltraImpresa: 1 });
 });
 
 test('invalid source, date, category or non-pilot session cannot write', async () => {

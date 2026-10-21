@@ -7,6 +7,7 @@ import { getAuthorizedEmployee, getReportCategoryValue, type DailyReport } from 
 import { getItalyDate } from './lib/utils';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 import { CUSTOMER_REGISTRY_COLLECTION } from './customerRegistryModel';
+import { PILOT_REPORT_CATEGORIES } from './pilotReportCatalog';
 import {
   customerMatchFromRecord, isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
   NEGOTIATIONS_COLLECTION, NEGOTIATION_CUSTOMERS_COLLECTION, normalizeFiscalCode,
@@ -121,7 +122,9 @@ export function subscribeToNegotiations(onData: (items: Negotiation[]) => void, 
 
 export async function adjustPilotReportCount(categoryId: string, delta: number): Promise<void> {
   const user = requirePilot();
-  if (isProposalCategory(categoryId) || ![1, -1].includes(delta)) throw new Error('Le proposte si registrano tramite la scheda cliente.');
+  if (isProposalCategory(categoryId) || !PILOT_REPORT_CATEGORIES.some(category => category.id === categoryId) || ![1, -1].includes(delta)) {
+    throw new Error('Voce non modificabile manualmente. Le proposte si registrano tramite la scheda cliente.');
+  }
   const today = getItalyDate();
   const reportRef = doc(db, PILOT_REPORTS_COLLECTION, `${user.uid}_${today}`);
   await runTransaction(db, async transaction => {
