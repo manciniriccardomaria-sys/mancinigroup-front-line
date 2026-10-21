@@ -18,12 +18,13 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
       {PILOT_REPORT_SECTIONS.map(section => {
         const SectionIcon = getReportCategoryIcon(section.iconKey);
-        return <section key={section.id} aria-labelledby={`pilot-section-${section.id}`} className={`bg-white border border-slate-200 border-t-4 ${section.color} rounded-xl overflow-hidden shadow-sm`}>
+        const placement = section.id === 'promotion' ? 'xl:col-span-3' : section.id === 'reception' ? '' : 'xl:col-span-2';
+        return <section key={section.id} aria-labelledby={`pilot-section-${section.id}`} className={`bg-white border border-slate-200 border-t-4 ${section.color} ${placement} rounded-xl overflow-hidden shadow-sm`}>
           <div className="px-4 py-4 border-b border-slate-200 bg-slate-50/60">
             <h3 id={`pilot-section-${section.id}`} className="flex items-center gap-2 text-base font-bold text-slate-800"><SectionIcon size={18} className="text-slate-500" />{section.title}</h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">{section.description}</p>
           </div>
-          <div>
+          <div className={section.id === 'promotion' ? 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3' : ''}>
             {section.categories.map((category, index) => {
               const CategoryIcon = getReportCategoryIcon(category.iconKey);
               const value = report ? getReportCategoryValue(report, category.id) : 0;
@@ -31,7 +32,7 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
               const label = pilotActivityLabel(category);
               const newGroup = category.group && category.group !== section.categories[index - 1]?.group;
               return <Fragment key={category.id}>
-                {newGroup && <h4 className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500">{category.group}</h4>}
+                {newGroup && <h4 className="col-span-full px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500">{category.group}</h4>}
                 <div className="px-3 py-3 min-h-[76px] flex items-center justify-between gap-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
                   <div className="flex items-start gap-2 min-w-0">
                     <CategoryIcon size={16} className="mt-0.5 shrink-0 text-slate-400" />
