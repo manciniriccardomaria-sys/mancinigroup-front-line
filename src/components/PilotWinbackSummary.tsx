@@ -63,7 +63,6 @@ export default function PilotWinbackSummary({ date, today }: { date: string; tod
             <span role="status" className="text-xs font-bold text-slate-800">{loadError ? 'Non disponibile' : loading ? 'Caricamento…' : `${summary.calls} ${summary.calls === 1 ? 'chiamata' : 'chiamate'}`}</span>
           </span>
           {!loading && !loadError && <span className="block text-[11px] text-slate-600 mt-0.5">{summary.reached} raggiunti · {summary.recovered} recuperati</span>}
-          <span className="sr-only">Registro del profilo di test · {expanded ? 'Chiudi dettaglio' : 'Apri dettaglio'}</span>
         </span>
         <ChevronDown size={16} className={`mt-1 text-blue-700 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
