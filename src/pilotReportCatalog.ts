@@ -1,5 +1,3 @@
-import type { DailyReport } from './constants';
-import { getReportCategoryValue } from './constants';
 import type { ReportCategory, ReportIconId } from './reportCatalog';
 
 export type PilotReportCategory = ReportCategory & {
@@ -33,9 +31,8 @@ export const PILOT_REPORT_SECTIONS = [
       item('prevUltraCasa', 'ULTRA Casa', 'Proposte presentate', 'home', 'Preventivi e proposte'),
       item('prevUltraImpresa', 'ULTRA Impresa', 'Proposte presentate', 'briefcase', 'Preventivi e proposte'),
       item('longevityCare', 'Longevity Care', 'Proposte presentate', 'heart', 'Preventivi e proposte'),
-      item('scegliAllianzGen26', 'ScegliAllianz', 'Proposte presentate', 'shield-check', 'Preventivi e proposte'),
+      item('contattiProtection', 'Lovia', 'Proposte presentate', 'shield-check', 'Preventivi e proposte'),
       item('contattiFondoPensione', 'Fondo pensione', 'Contatti commerciali', 'piggy-bank', 'Contatti, consegne e recensioni'),
-      item('contattiProtection', 'Protection', 'Contatti commerciali', 'shield-check', 'Contatti, consegne e recensioni'),
       item('contattiEnergia', 'Energia', 'Contatti commerciali', 'zap', 'Contatti, consegne e recensioni'),
       item('contattiNoleggio', 'Noleggio', 'Contatti commerciali', 'key', 'Contatti, consegne e recensioni'),
       item('vitarivConsegna', 'Vitariv', 'Consegne effettuate', 'book-check', 'Contatti, consegne e recensioni'),
@@ -77,10 +74,4 @@ export const PILOT_RETIRED_CATEGORIES: ReportCategory[] = [
 
 export function pilotActivityLabel(category: PilotReportCategory): string {
   return `${category.label} · ${category.activity.toLocaleLowerCase('it')}`;
-}
-
-export function getRetiredPilotActivities(report: Partial<DailyReport>) {
-  return PILOT_RETIRED_CATEGORIES
-    .map(category => ({ category, value: getReportCategoryValue(report, category.id) }))
-    .filter(activity => activity.value > 0);
 }

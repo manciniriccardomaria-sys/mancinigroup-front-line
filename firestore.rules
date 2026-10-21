@@ -517,6 +517,23 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
     }
 
+    match /negotiation_test_deliveries/{deliveryId} {
+      allow get: if ownsPilotId(deliveryId);
+      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
+      allow create: if ownsPilotId(deliveryId) &&
+        request.resource.data.keys().hasOnly([
+          'ownerUid', 'ownerName', 'fiscalCode', 'firstName', 'lastName', 'birthDate',
+          'sourceCode', 'sourceName', 'categoryId', 'activityLabel', 'activityDate',
+          'createdAt', 'updatedAt'
+        ]) && isValidNegotiationCustomer(request.resource.data) &&
+        request.resource.data.ownerName == 'Riccardo collaboratore' &&
+        request.resource.data.sourceCode == '098' && request.resource.data.sourceName == 'MANCINI RICCARDO MARIA' &&
+        request.resource.data.categoryId == 'vitarivConsegna' &&
+        request.resource.data.activityLabel is string && request.resource.data.activityLabel.size() > 0 && request.resource.data.activityLabel.size() < 150 &&
+        request.resource.data.activityDate is string && request.resource.data.activityDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        request.resource.data.createdAt == request.time;
+    }
+
     // The report pilot only reads operational calls; its event log is isolated.
     match /pilot_winback_calls/{callId} {
       allow get: if ownsPilotId(callId);

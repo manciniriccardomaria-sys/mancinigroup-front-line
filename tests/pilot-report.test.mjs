@@ -15,8 +15,8 @@ test('the pilot has exactly four sections, unique counters and all agreed produc
   assert.deepEqual(catalog.PILOT_REPORT_SECTIONS.map(section => section.title), ['Ricezione', 'Promozione', 'Emissione', 'Terzi']);
   const ids = catalog.PILOT_REPORT_CATEGORIES.map(category => category.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(ids.length, 29);
-  for (const retired of ['prevRetailSe', 'emissRetailSe', 'prevRetailTerzi', 'winbackMag25']) assert.equal(ids.includes(retired), false);
+  assert.equal(ids.length, 28);
+  for (const retired of ['prevRetailSe', 'emissRetailSe', 'prevRetailTerzi', 'winbackMag25', 'scegliAllianzGen26']) assert.equal(ids.includes(retired), false);
   const promotion = catalog.PILOT_REPORT_SECTIONS[1].categories.map(category => category.id);
   for (const id of ['vitarivConsegna', 'scegliAllianzConsegna', 'recensioni']) assert.equal(promotion.includes(id), true);
   for (const section of catalog.PILOT_REPORT_SECTIONS.slice(1)) {
@@ -26,10 +26,17 @@ test('the pilot has exactly four sections, unique counters and all agreed produc
   for (const id of ['emissUltraSalute', 'prevUltraCasaTerzi', 'prevSmegTerzi']) assert.equal(model.isProposalCategory(id), false);
 });
 
-test('old Retail and manual Winback values remain separate without inventing product allocations', () => {
-  const report = { values: { prevRetailSe: 5, winbackMag25: 3, prevUltraCasa: 2 }, emissRetailSe: 1 };
-  assert.deepEqual(catalog.getRetiredPilotActivities(report).map(({ category, value }) => [category.id, value]), [['prevRetailSe', 5], ['emissRetailSe', 1], ['winbackMag25', 3]]);
-  assert.equal(report.values.prevUltraCasa, 2);
+test('Lovia preserves the Protection counter ID and moves to proposals; Vitariv requires a customer without becoming a proposal', () => {
+  const promotion = catalog.PILOT_REPORT_SECTIONS[1].categories;
+  const lovia = promotion.find(category => category.id === 'contattiProtection');
+  assert.equal(lovia.label, 'Lovia');
+  assert.equal(lovia.activity, 'Proposte presentate');
+  assert.equal(lovia.group, 'Preventivi e proposte');
+  assert.equal(promotion.some(category => category.label === 'Protection'), false);
+  assert.equal(model.isCustomerActivityCategory('vitarivConsegna'), true);
+  assert.equal(model.isProposalCategory('vitarivConsegna'), false);
+  assert.equal(model.isCustomerActivityCategory('scegliAllianzGen26'), false);
+  assert.equal(model.isCustomerActivityCategory('scegliAllianzConsegna'), false);
 });
 
 const event = { id: 'pilot_1', ownerUid: 'pilot', taskId: 'task1', customerKey: 'customer1', calledDate: '2026-10-21', outcome: 'reached' };

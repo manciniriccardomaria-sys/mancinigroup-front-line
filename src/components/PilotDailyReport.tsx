@@ -2,9 +2,9 @@ import { Fragment } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import type { DailyReport } from '../constants';
 import { getReportCategoryValue } from '../constants';
-import { isProposalCategory } from '../negotiationModel';
+import { isCustomerActivityCategory } from '../negotiationModel';
 import { getReportCategoryIcon } from '../reportCatalog';
-import { getRetiredPilotActivities, PILOT_REPORT_SECTIONS, pilotActivityLabel, type PilotReportCategory } from '../pilotReportCatalog';
+import { PILOT_REPORT_SECTIONS, pilotActivityLabel, type PilotReportCategory } from '../pilotReportCatalog';
 
 export default function PilotDailyReport({ report, saving, proposalOpen, onAdjust, onProposal }: {
   report: DailyReport | null;
@@ -13,8 +13,7 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
   onAdjust: (categoryId: string, delta: number) => void;
   onProposal: (category: PilotReportCategory) => void;
 }) {
-  const retired = report ? getRetiredPilotActivities(report) : [];
-  return <>
+  return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
       {PILOT_REPORT_SECTIONS.map(section => {
         const SectionIcon = getReportCategoryIcon(section.iconKey);
@@ -28,7 +27,7 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
             {section.categories.map((category, index) => {
               const CategoryIcon = getReportCategoryIcon(category.iconKey);
               const value = report ? getReportCategoryValue(report, category.id) : 0;
-              const proposal = isProposalCategory(category.id);
+              const requiresCustomer = isCustomerActivityCategory(category.id);
               const label = pilotActivityLabel(category);
               const newGroup = category.group && category.group !== section.categories[index - 1]?.group;
               return <Fragment key={category.id}>
@@ -39,9 +38,9 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
                     <div><p className="text-sm font-semibold text-slate-800 leading-tight">{category.label}</p><p className="text-[11px] text-slate-500 mt-1 leading-tight">{category.activity}</p></div>
                   </div>
                   <div className="flex items-center rounded-lg bg-slate-100 p-0.5 shrink-0">
-                    {!proposal && <button type="button" aria-label={`Diminuisci ${label}`} onClick={() => onAdjust(category.id, -1)} disabled={value === 0 || saving || !report} className="w-8 h-9 inline-flex items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-red-600 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-25"><Minus size={15} /></button>}
+                    {!requiresCustomer && <button type="button" aria-label={`Diminuisci ${label}`} onClick={() => onAdjust(category.id, -1)} disabled={value === 0 || saving || !report} className="w-8 h-9 inline-flex items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-red-600 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-25"><Minus size={15} /></button>}
                     <output aria-label={`Totale ${label}`} className="w-8 text-center font-bold text-base text-slate-800 tabular-nums">{value}</output>
-                    <button type="button" aria-label={proposal ? `Nuova registrazione: ${label}` : `Aumenta ${label}`} title={proposal ? 'Apri la scheda cliente per registrare l’attività' : `Aumenta ${label}`} onClick={() => proposal ? onProposal(category) : onAdjust(category.id, 1)} disabled={saving || proposalOpen || !report} className="w-8 h-9 inline-flex items-center justify-center rounded-md text-[#003781] hover:bg-white focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-25"><Plus size={15} /></button>
+                    <button type="button" aria-label={requiresCustomer ? `Nuova registrazione: ${label}` : `Aumenta ${label}`} title={requiresCustomer ? 'Apri la scheda cliente per registrare l’attività' : `Aumenta ${label}`} onClick={() => requiresCustomer ? onProposal(category) : onAdjust(category.id, 1)} disabled={saving || proposalOpen || !report} className="w-8 h-9 inline-flex items-center justify-center rounded-md text-[#003781] hover:bg-white focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-25"><Plus size={15} /></button>
                   </div>
                 </div>
               </Fragment>;
@@ -50,10 +49,6 @@ export default function PilotDailyReport({ report, saving, proposalOpen, onAdjus
         </section>;
       })}
     </div>
-    {retired.length > 0 && <details className="bg-white border border-slate-200 rounded-xl px-4 py-3">
-      <summary className="cursor-pointer text-xs font-bold text-slate-600">Voci precedenti · {retired.reduce((total, item) => total + item.value, 0)} attività già registrate</summary>
-      <p className="text-xs text-slate-500 mt-2">Questi conteggi restano consultabili. Non vengono distribuiti automaticamente tra i nuovi prodotti né sommati al registro chiamate.</p>
-      <ul className="mt-2 space-y-1 text-xs text-slate-600">{retired.map(({ category, value }) => <li key={category.id} className="flex justify-between gap-3"><span>{category.label}</span><strong>{value}</strong></li>)}</ul>
-    </details>}
-  </>;
+
+  );
 }

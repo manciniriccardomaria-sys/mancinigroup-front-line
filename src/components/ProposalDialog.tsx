@@ -6,12 +6,13 @@ import { auth } from '../firebase';
 import { SOURCE_DIRECTORY } from '../sourceDirectory';
 import type { ReportCategory } from '../reportCatalog';
 import { isValidFiscalCode, normalizeFiscalCode, validateCustomer, type CustomerDetails } from '../negotiationModel';
-import { createNegotiationId, findNegotiationCustomer, getNegotiationErrorMessage, saveNegotiation } from '../negotiations';
+import { createNegotiationId, findNegotiationCustomer, getNegotiationErrorMessage, saveNegotiation, saveVitarivDelivery } from '../negotiations';
 
 const EMPTY_CUSTOMER: CustomerDetails = { fiscalCode: '', firstName: '', lastName: '', birthDate: '' };
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white disabled:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600';
 
 export default function ProposalDialog({ category, onClose }: { category: ReportCategory; onClose: () => void }) {
+  const isDelivery = category.id === 'vitarivConsegna';
   const dialogRef = useRef<HTMLDialogElement>(null);
   const fiscalCodeRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
@@ -50,7 +51,7 @@ export default function ProposalDialog({ category, onClose }: { category: Report
             : `Anagrafica trovata e compilata. ${match.birthDate ? 'Puoi correggere i dati prima di salvare.' : 'Completa la data di nascita mancante.'}`));
         } else {
           setLookupStatus('missing');
-          setLookupNote('Cliente non trovato. Compila l’anagrafica per questa proposta.');
+          setLookupNote('Cliente non trovato. Compila l’anagrafica del cliente.');
         }
       } catch (lookupError) {
         if (cancelled) return;
@@ -67,12 +68,13 @@ export default function ProposalDialog({ category, onClose }: { category: Report
     const validation = validateCustomer(customer, getItalyDate());
     if (validation) { setError(validation); return; }
     const source = sources.find(item => `${item.code}|${item.name}` === sourceKey);
-    if (!source) { setError('Seleziona la fonte della proposta.'); return; }
+    if (!source) { setError('Seleziona la fonte dell’attività.'); return; }
     savingRef.current = true;
     setSaving(true);
     setError('');
     try {
-      await saveNegotiation({ id, customer, categoryId: category.id, proposalLabel: category.label, proposalDate, sourceCode: source.code, sourceName: source.name });
+      const saveActivity = isDelivery ? saveVitarivDelivery : saveNegotiation;
+      await saveActivity({ id, customer, categoryId: category.id, proposalLabel: category.label, proposalDate, sourceCode: source.code, sourceName: source.name });
       onClose();
     } catch (saveError) {
       setError(getNegotiationErrorMessage(saveError));
@@ -89,19 +91,19 @@ export default function ProposalDialog({ category, onClose }: { category: Report
       <form onSubmit={submit}>
         <div className="flex justify-between items-start gap-4 px-6 py-5 border-b border-slate-200">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Account di test · Nuova proposta</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Account di test · {isDelivery ? 'Consegna Vitariv' : 'Nuova proposta'}</p>
             <h2 id="proposal-dialog-title" className="text-xl font-bold text-slate-800 mt-1">Dati del cliente</h2>
-            <p className="text-sm text-slate-500 mt-1">Salva la trattativa per registrare l’attività.</p>
+            <p className="text-sm text-slate-500 mt-1">{isDelivery ? 'Compila l’anagrafica e salva per registrare la consegna.' : 'Salva la trattativa per registrare l’attività.'}</p>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="Chiudi proposta" className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-40"><X size={20} /></button>
+          <button type="button" onClick={onClose} disabled={saving} aria-label="Chiudi scheda cliente" className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-40"><X size={20} /></button>
         </div>
         <fieldset disabled={saving} className="px-6 py-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg">
-            <label className="text-xs font-bold text-slate-600">Proposta
-              <input aria-label="Proposta" value={category.label} readOnly className={`${inputClass} mt-1 !bg-slate-100`} />
+            <label className="text-xs font-bold text-slate-600">{isDelivery ? 'Consegna' : 'Proposta'}
+              <input aria-label={isDelivery ? 'Consegna' : 'Proposta'} value={category.label} readOnly className={`${inputClass} mt-1 !bg-slate-100`} />
             </label>
-            <label className="text-xs font-bold text-slate-600">Data della proposta
-              <input aria-label="Data della proposta" type="date" value={proposalDate} readOnly className={`${inputClass} mt-1 !bg-slate-100`} />
+            <label className="text-xs font-bold text-slate-600">{isDelivery ? 'Data della consegna' : 'Data della proposta'}
+              <input aria-label={isDelivery ? 'Data della consegna' : 'Data della proposta'} type="date" value={proposalDate} readOnly className={`${inputClass} mt-1 !bg-slate-100`} />
             </label>
           </div>
           <label className="block text-sm font-semibold text-slate-700">Fonte
@@ -140,7 +142,7 @@ export default function ProposalDialog({ category, onClose }: { category: Report
         <div className="flex flex-wrap justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
           <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2.5 border border-slate-300 bg-white rounded-lg text-sm font-bold disabled:opacity-40">Annulla</button>
           <button type="submit" disabled={saving || lookupStatus === 'searching'} className="flex items-center gap-2 px-4 py-2.5 bg-[#003781] text-white rounded-lg text-sm font-bold disabled:opacity-40">
-            {saving ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle2 size={17} />}{saving ? 'Salvataggio...' : 'Salva proposta'}
+            {saving ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle2 size={17} />}{saving ? 'Salvataggio...' : isDelivery ? 'Salva consegna' : 'Salva proposta'}
           </button>
         </div>
       </form>

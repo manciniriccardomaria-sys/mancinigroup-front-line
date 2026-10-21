@@ -9,9 +9,9 @@ import { SOURCE_DIRECTORY } from './sourceDirectory';
 import { CUSTOMER_REGISTRY_COLLECTION } from './customerRegistryModel';
 import { PILOT_REPORT_CATEGORIES } from './pilotReportCatalog';
 import {
-  customerMatchFromRecord, isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
+  customerMatchFromRecord, isCustomerActivityCategory, isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
   NEGOTIATIONS_COLLECTION, NEGOTIATION_CUSTOMERS_COLLECTION, normalizeFiscalCode,
-  PILOT_REPORTS_COLLECTION, validateCustomer,
+  PILOT_REPORTS_COLLECTION, VITARIV_DELIVERIES_COLLECTION, validateCustomer,
   type CustomerDetails, type CustomerMatch, type Negotiation, type NegotiationStatus,
 } from './negotiationModel';
 
@@ -52,7 +52,7 @@ export async function findNegotiationCustomer(fiscalCode: string): Promise<Custo
   };
 }
 
-export async function saveNegotiation(input: {
+type CustomerActivityInput = {
   id: string;
   customer: CustomerDetails;
   categoryId: string;
@@ -60,7 +60,21 @@ export async function saveNegotiation(input: {
   proposalDate: string;
   sourceCode: string;
   sourceName: string;
-}): Promise<void> {
+};
+
+export async function saveNegotiation(input: CustomerActivityInput): Promise<void> {
+  requirePilot();
+  if (!isProposalCategory(input.categoryId)) throw new Error('Questa attività non prevede una proposta.');
+  await saveCustomerActivity(input, false);
+}
+
+export async function saveVitarivDelivery(input: CustomerActivityInput): Promise<void> {
+  requirePilot();
+  if (input.categoryId !== 'vitarivConsegna') throw new Error('Seleziona la consegna Vitariv.');
+  await saveCustomerActivity(input, true);
+}
+
+async function saveCustomerActivity(input: CustomerActivityInput, delivery: boolean): Promise<void> {
   const user = requirePilot();
   const employee = getAuthorizedEmployee(user.email);
   const today = getItalyDate();
@@ -72,16 +86,15 @@ export async function saveNegotiation(input: {
   };
   const validation = validateCustomer(customer, today);
   if (validation) throw new Error(validation);
-  if (input.proposalDate !== today) throw new Error('È cambiata la giornata. Riapri la proposta per aggiornare la data.');
-  if (!isProposalCategory(input.categoryId)) throw new Error('Questa attività non prevede una proposta.');
+  if (input.proposalDate !== today) throw new Error('È cambiata la giornata. Riapri la scheda cliente per aggiornare la data.');
   if (!employee?.sourceCodes.includes(input.sourceCode) || !SOURCE_DIRECTORY.some(source => source.code === input.sourceCode && source.name === input.sourceName)) {
     throw new Error('Seleziona una fonte assegnata al tuo account.');
   }
-  const dealRef = doc(db, NEGOTIATIONS_COLLECTION, input.id);
+  const dealRef = doc(db, delivery ? VITARIV_DELIVERIES_COLLECTION : NEGOTIATIONS_COLLECTION, input.id);
   const reportRef = doc(db, PILOT_REPORTS_COLLECTION, `${user.uid}_${today}`);
   const customerRef = doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${customer.fiscalCode}`);
 
-  // A single commit links the proposal, customer and counter. A retry uses the same ID.
+  // A single commit links the activity, customer and counter. A retry uses the same ID.
   await runTransaction(db, async transaction => {
     const existingDeal = await transaction.get(dealRef);
     if (existingDeal.exists()) return;
@@ -94,9 +107,9 @@ export async function saveNegotiation(input: {
       sourceCode: input.sourceCode,
       sourceName: input.sourceName,
       categoryId: input.categoryId,
-      proposalLabel: input.proposalLabel,
-      proposalDate: today,
-      status: 'open',
+      ...(delivery
+        ? { activityLabel: input.proposalLabel, activityDate: today }
+        : { proposalLabel: input.proposalLabel, proposalDate: today, status: 'open' }),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -122,8 +135,8 @@ export function subscribeToNegotiations(onData: (items: Negotiation[]) => void, 
 
 export async function adjustPilotReportCount(categoryId: string, delta: number): Promise<void> {
   const user = requirePilot();
-  if (isProposalCategory(categoryId) || !PILOT_REPORT_CATEGORIES.some(category => category.id === categoryId) || ![1, -1].includes(delta)) {
-    throw new Error('Voce non modificabile manualmente. Le proposte si registrano tramite la scheda cliente.');
+  if (isCustomerActivityCategory(categoryId) || !PILOT_REPORT_CATEGORIES.some(category => category.id === categoryId) || ![1, -1].includes(delta)) {
+    throw new Error('Voce non modificabile manualmente. Registra l’attività tramite la scheda cliente.');
   }
   const today = getItalyDate();
   const reportRef = doc(db, PILOT_REPORTS_COLLECTION, `${user.uid}_${today}`);

@@ -4,20 +4,25 @@ export const NEGOTIATIONS_PILOT_EMAIL = 'manciniriccardo9@gmail.com';
 export const PILOT_REPORTS_COLLECTION = 'negotiation_test_reports';
 export const NEGOTIATIONS_COLLECTION = 'negotiation_test_deals';
 export const NEGOTIATION_CUSTOMERS_COLLECTION = 'negotiation_test_customers';
+export const VITARIV_DELIVERIES_COLLECTION = 'negotiation_test_deliveries';
 
 export function isNegotiationsPilot(email: string | null | undefined): boolean {
   return email?.trim().toLowerCase() === NEGOTIATIONS_PILOT_EMAIL;
 }
 
-// Explicit IDs: deliveries, emissions and calls do not constitute a proposal.
+// Deliveries are customer activities stored separately from proposals.
 export const PROPOSAL_CATEGORY_IDS = [
   'prevMotorSe', 'prevRetailSe', 'prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa',
-  'smeg', 'longevityCare', 'scegliAllianzGen26',
+  'smeg', 'longevityCare',
   'contattiFondoPensione', 'contattiProtection', 'contattiEnergia', 'contattiNoleggio',
 ] as const;
 
 export function isProposalCategory(categoryId: string): boolean {
   return (PROPOSAL_CATEGORY_IDS as readonly string[]).includes(categoryId);
+}
+
+export function isCustomerActivityCategory(categoryId: string): boolean {
+  return isProposalCategory(categoryId) || categoryId === 'vitarivConsegna';
 }
 
 export type NegotiationStatus = 'open' | 'ko' | 'ok';

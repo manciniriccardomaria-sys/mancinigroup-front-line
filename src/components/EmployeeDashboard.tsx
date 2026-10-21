@@ -41,7 +41,7 @@ import {
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
-import { isNegotiationsPilot, isProposalCategory, PILOT_REPORTS_COLLECTION } from '../negotiationModel';
+import { isCustomerActivityCategory, isNegotiationsPilot, isProposalCategory, PILOT_REPORTS_COLLECTION } from '../negotiationModel';
 import ProposalDialog from './ProposalDialog';
 import NegotiationsTab from './NegotiationsTab';
 import { adjustPilotReportCount } from '../negotiations';
@@ -255,7 +255,7 @@ export default function EmployeeDashboard() {
 
   const updateCount = async (categoryId: CategoryId, delta: number) => {
     if (!report || !auth.currentUser || saving) return;
-    if (negotiationsEnabled && isProposalCategory(categoryId)) return;
+    if (negotiationsEnabled && isCustomerActivityCategory(categoryId)) return;
     if (negotiationsEnabled) {
       setSaving(true);
       try {

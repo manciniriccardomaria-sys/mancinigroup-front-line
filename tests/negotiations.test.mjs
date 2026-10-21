@@ -118,7 +118,44 @@ test('other pilot counters preserve proposal counts and never become negative', 
   await service.adjustPilotReportCount('incassi', -1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
   await assert.rejects(service.adjustPilotReportCount('smeg', -1));
-  for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
+  for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
+});
+
+test('Vitariv saves customer details and a delivery atomically without opening a negotiation; retries do not duplicate', async () => {
+  reset();
+  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { vitarivConsegna: 2, winbackMag25: 4 } };
+  const delivery = { ...proposal(), categoryId: 'vitarivConsegna', proposalLabel: 'Vitariv · consegne effettuate' };
+  await assert.rejects(service.saveNegotiation(delivery), /non prevede una proposta/);
+  await service.saveVitarivDelivery(delivery);
+  assert.deepEqual(globalThis.negotiationWrites.map(write => write.ref.name), ['negotiation_test_deliveries', 'negotiation_test_customers', 'negotiation_test_reports']);
+  const saved = globalThis.negotiationWrites[0].data;
+  assert.equal(saved.fiscalCode, customer.fiscalCode);
+  assert.equal(saved.activityLabel, delivery.proposalLabel);
+  assert.equal(saved.activityDate, getItalyDate());
+  assert.equal(saved.status, undefined);
+  assert.deepEqual(globalThis.negotiationWrites[2].data.values, { vitarivConsegna: 3, winbackMag25: 4 });
+  await service.saveVitarivDelivery(delivery);
+  assert.equal(globalThis.negotiationWrites.length, 3);
+});
+
+test('Vitariv rejects missing personal details and failures leave both the customer and delivery counter untouched', async () => {
+  reset();
+  const delivery = { ...proposal(), categoryId: 'vitarivConsegna', proposalLabel: 'Vitariv · consegne effettuate' };
+  await assert.rejects(service.saveVitarivDelivery({ ...delivery, customer: { ...customer, birthDate: '' } }));
+  await assert.rejects(service.saveVitarivDelivery({ ...delivery, categoryId: 'incassi' }));
+  globalThis.failNegotiationCommit = true;
+  await assert.rejects(service.saveVitarivDelivery(delivery), /offline/);
+  assert.deepEqual(globalThis.negotiationStore, {});
+  assert.deepEqual(globalThis.negotiationWrites, []);
+});
+
+test('Lovia continues the existing Protection counter; removed ScegliAllianz proposals cannot be added', async () => {
+  reset();
+  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { contattiProtection: 3 } };
+  await service.saveNegotiation({ ...proposal(), categoryId: 'contattiProtection', proposalLabel: 'Lovia · proposte presentate' });
+  assert.equal(globalThis.negotiationWrites[0].data.proposalLabel, 'Lovia · proposte presentate');
+  assert.equal(globalThis.negotiationWrites[2].data.values.contattiProtection, 4);
+  await assert.rejects(service.saveNegotiation({ ...proposal(), categoryId: 'scegliAllianzGen26' }), /non prevede una proposta/);
 });
 
 test('each new ULTRA proposal records its own product without changing the legacy Retail total', async () => {

@@ -12,13 +12,13 @@ La password non è conservata nel repository.
 - ULTRA Impresa · proposte
 - SMEG
 - Longevity Care
-- ScegliAllianz
 - Contatti Fondo Pensione
-- Contatti Protection
+- Lovia · proposte (precedentemente Protection)
 - Contatti Energia
 - Contatti Noleggio
+- Vitariv · consegne (scheda cliente, senza apertura di una trattativa)
 
-Preventivi per terzi, consegne, emissioni, sinistri e altre operazioni mantengono i normali
+Preventivi per terzi, consegne ScegliAllianz, emissioni, sinistri e altre operazioni mantengono i normali
 contatori. Le categorie sono selezionate per ID, anche se un amministratore
 ne modifica l'etichetta. Per aggiungere altre proposte occorre aggiornare
 `PROPOSAL_CATEGORY_IDS` e la corrispondente validazione in `firestore.rules`.
@@ -31,11 +31,21 @@ condiviso `report_categories` e i report degli altri operatori non cambiano.
 Le voci Retail vengono sostituite da ULTRA Salute, SMEG, ULTRA Casa e ULTRA
 Impresa, con contatori distinti per proposta, emissione e preventivo per terzi.
 Vitariv/consegne, ScegliAllianz/consegne e Recensioni sono in Promozione.
-I vecchi contatori Retail e Winback manuali restano in sola lettura sotto
-“Voci precedenti” e nello storico, senza ripartizioni presunte tra prodotti.
-Le proposte mantengono la scheda cliente e non mostrano il meno; le altre
+La sezione “Voci precedenti” è rimossa dalla schermata giornaliera; i vecchi
+contatori Retail e Winback manuali restano nello storico, senza ripartizioni
+presunte tra prodotti. ScegliAllianz/proposte è rimosso, mentre rimane la
+consegna. Protection diventa Lovia, nel gruppo Preventivi e proposte, mantenendo
+l'ID del contatore esistente per conservare le attività già registrate.
+Le proposte e la consegna Vitariv richiedono la scheda cliente e non mostrano il meno; le altre
 attività conservano i contatori manuali. Le voci “Contatti” già collegate
 alla scheda cliente mantengono il flusso esistente.
+
+La consegna Vitariv richiede CF, nome, cognome e nascita, con la stessa
+ricerca e autocompilazione delle proposte. Un'unica transazione salva
+l'anagrafica del cliente, il dettaglio della consegna nella raccolta isolata
+`negotiation_test_deliveries` e l'incremento giornaliero. Annullare o fallire
+il salvataggio non aumenta il contatore; ritentare con lo stesso ID non
+duplica la consegna. Le consegne non compaiono come trattative aperte.
 
 ### Winback automatico nel test
 
