@@ -77,7 +77,64 @@ const firestoreMock = {
     ` }));
   },
 };
-const { importCallTasks } = await loadModule('src/callCenter.ts', [firestoreMock]);
+const {
+  importCallTasks, isTaskExpired, isTaskBeforeTrackingStart,
+  isTaskWithinWorkingPeriod, isTaskActionable, getTaskCallbackDeadline,
+} = await loadModule('src/callCenter.ts', [firestoreMock]);
+
+test('Winback remains editable and overdue after the anniversary, including legacy tasks', () => {
+  for (const dueDate of ['2026-10-05', '2026-05-01']) {
+    for (const status of ['da_chiamare', 'non_raggiungibile', 'da_richiamare']) {
+      const task = { ...baseTask, dueDate, eventDate: '2026-10-06', status,
+        ...(status === 'da_richiamare' ? { callbackDate: '2026-10-07' } : {}) };
+      const original = structuredClone(task);
+      assert.equal(isTaskExpired(task, today), false);
+      assert.equal(isTaskBeforeTrackingStart(task), false);
+      assert.equal(isTaskWithinWorkingPeriod(task, today), true);
+      assert.equal(isTaskActionable(task, today), true);
+      assert.ok(history.getTaskCalendarDates(task, today, isTaskActionable(task, today)).includes(today));
+      assert.deepEqual(task, original, 'restoring access must not rewrite dates or outcomes');
+    }
+  }
+});
+
+test('closed Winback outcomes can be corrected after the anniversary without reentering the queue', () => {
+  for (const status of ['chiamato', 'ripreso', 'non_gradito', 'cliente_perso', 'cambio_rottamazione_macchina']) {
+    const task = { ...baseTask, status, eventDate: '2026-10-06', updatedAt: '2026-10-07T12:00:00Z' };
+    assert.equal(isTaskWithinWorkingPeriod(task, today), true);
+    assert.equal(isTaskActionable(task, today), false);
+    assert.deepEqual(history.getTaskCalendarDates(task, today, false), ['2026-10-05', '2026-10-07']);
+    assert.equal(isTaskActionable({ ...task, status: 'da_chiamare' }, today), true);
+  }
+});
+
+test('Winback callbacks can follow the anniversary and only become due on their scheduled date', () => {
+  const task = { ...baseTask, status: 'da_richiamare', eventDate: '2026-10-06', callbackDate: '2026-10-12' };
+  assert.equal(getTaskCallbackDeadline(task), undefined);
+  assert.equal(isTaskWithinWorkingPeriod(task, today), true);
+  assert.equal(isTaskActionable(task, today), false);
+  assert.equal(isTaskActionable(task, '2026-10-12'), true);
+  assert.equal(isTaskActionable(task, '2026-10-13'), true);
+  assert.deepEqual(history.getTaskCalendarDates(task, today, false), ['2026-10-05', '2026-10-12']);
+  assert.equal(isTaskActionable({ ...baseTask, dueDate: '2026-10-12' }, today), false);
+});
+
+test('other categories keep their expiration, tracking start and callback deadline', () => {
+  for (const category of ['campagna', 'scadenza_rata', 'scadenza_annuale']) {
+    const task = { ...baseTask, category, importType: 'expirations' };
+    assert.equal(isTaskActionable(task, today), true);
+    assert.equal(getTaskCallbackDeadline(task), task.eventDate);
+    const expired = { ...task, eventDate: '2026-10-06' };
+    assert.equal(isTaskExpired(expired, today), true);
+    assert.equal(isTaskWithinWorkingPeriod(expired, today), false);
+    assert.equal(isTaskActionable(expired, today), false);
+    assert.equal(isTaskWithinWorkingPeriod({ ...expired, status: 'ripreso' }, today), false);
+    const beforeTracking = { ...task, dueDate: '2026-05-01' };
+    assert.equal(isTaskBeforeTrackingStart(beforeTracking), true);
+    assert.equal(isTaskWithinWorkingPeriod(beforeTracking, today), false);
+    assert.equal(isTaskActionable(beforeTracking, today), false);
+  }
+});
 
 test('reimports preserve outcomes and original dates for every import type', async () => {
   for (const kind of ['newClients', 'expirations', 'winback']) {

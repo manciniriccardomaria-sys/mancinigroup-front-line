@@ -41,12 +41,14 @@ import {
   Campaign,
   CallTask,
   getCampaignKind,
+  getTaskCallbackDeadline,
   getTaskCategoryLabel,
   getTaskEffectiveDate,
   isCampaignTaskEligible,
   isTaskActionable,
   isTaskBeforeTrackingStart,
   isTaskExpired,
+  isTaskWithinWorkingPeriod,
 } from '../callCenter';
 import {
   CALL_STATUSES,
@@ -263,7 +265,7 @@ export default function EmployeeCallCalendar() {
 
   const recoveredTasks = useMemo(
     () => modeTasks
-      .filter(task => task.status === 'ripreso' && task.eventDate >= today)
+      .filter(task => task.status === 'ripreso' && isTaskWithinWorkingPeriod(task, today))
       .sort((first, second) => {
         const dateComparison = first.eventDate.localeCompare(second.eventDate);
         if (dateComparison !== 0) return dateComparison;
@@ -317,6 +319,13 @@ export default function EmployeeCallCalendar() {
     nextStatus: CallStatusId,
     nextCallbackDate?: string,
   ) => {
+    const callbackDeadline = getTaskCallbackDeadline(task);
+    if (nextStatus === 'da_richiamare' && (!nextCallbackDate ||
+      nextCallbackDate < today || (callbackDeadline && nextCallbackDate > callbackDeadline))) {
+      setError('Seleziona una data di richiamo valida, da oggi in avanti' +
+        (callbackDeadline ? ' e non oltre la scadenza.' : '.'));
+      return;
+    }
     setSavingTaskId(task.id);
     setError('');
     const updatePayload = {
@@ -607,6 +616,7 @@ export default function EmployeeCallCalendar() {
             <p className="mb-4 text-xs text-slate-500">
               Le chiamate restano consultabili nella data prevista e nella data dell’ultima azione,
               anche dopo la chiusura o la scadenza. Seleziona un giorno precedente per vedere lo storico.
+              {' '}I clienti Winback restano modificabili anche dopo la data anniversario.
             </p>
 
             <div className="space-y-3">
@@ -617,7 +627,7 @@ export default function EmployeeCallCalendar() {
                 const isExpired = isTaskExpired(task, today);
                 const lastActionDate = getTaskLastActionDate(task);
                 const isOperational = operationalTaskIds.has(task.id) &&
-                  task.eventDate >= today && !isTaskBeforeTrackingStart(task);
+                  isTaskWithinWorkingPeriod(task, today);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
                 const canEdit = isOperational && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
@@ -777,7 +787,7 @@ export default function EmployeeCallCalendar() {
                             <input
                               type="date"
                               min={today}
-                              max={task.eventDate}
+                              max={getTaskCallbackDeadline(task)}
                               value={callbackDate}
                               onChange={event => setCallbackDate(event.target.value)}
                               className="min-w-0 flex-1 border border-amber-300 rounded-lg px-2 py-2 text-sm"
@@ -833,7 +843,8 @@ export default function EmployeeCallCalendar() {
                   Clienti ripresi
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Restano visibili fino alla rispettiva data di scadenza.
+                  I clienti Winback restano visibili anche dopo la data anniversario.
+                  Le altre chiamate restano visibili fino alla rispettiva scadenza.
                 </p>
               </div>
               <button
@@ -869,9 +880,24 @@ export default function EmployeeCallCalendar() {
                           <span><strong>Polizza:</strong> {task.policyNumber}</span>
                         )}
                         <span>
-                          <strong>Scadenza:</strong> {formatDisplayDate(task.eventDate)}
+                          <strong>{task.category === 'winback' ? 'Anniversario:' : 'Scadenza:'}</strong> {formatDisplayDate(task.eventDate)}
                         </span>
                       </div>
+                      {task.category === 'winback' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDate(task.dueDate);
+                            setVisibleMonth(startOfMonth(parseISO(task.dueDate)));
+                            setSearch('');
+                            setSelectedCategories(['winback']);
+                            setRecoveredClientsOpen(false);
+                          }}
+                          className="mt-3 text-sm font-bold text-[#003781] underline"
+                        >
+                          Apri nel calendario
+                        </button>
+                      )}
                     </div>
 
                     {task.phone ? (
