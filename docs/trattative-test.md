@@ -36,8 +36,8 @@ presunte tra prodotti. ScegliAllianz/proposte è rimosso, mentre rimane la
 consegna. Protection riunisce Longevity Care e Lovia nel gruppo Preventivi e
 proposte. Il + apre la scelta del prodotto, poi la scheda cliente. Il totale
 mostrato somma i due contatori; i salvataggi e lo storico conservano gli ID
-`longevityCare` e `contattiProtection` e il prodotto scelto. Le righe non hanno
-evidenziazioni verdi; il bordo di Emissione e gli indicatori usano il blu.
+`longevityCare` e `contattiProtection` e il prodotto scelto. Il bordo superiore
+di Emissione è verde e gli indicatori sono blu.
 Le proposte e la consegna Vitariv richiedono la scheda cliente e non mostrano il meno; le altre
 attività conservano i contatori manuali. Le voci “Contatti” già collegate
 alla scheda cliente mantengono il flusso esistente.

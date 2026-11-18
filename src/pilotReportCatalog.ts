@@ -48,7 +48,7 @@ export const PILOT_REPORT_SECTIONS = [
   },
   {
     id: 'issuance', title: 'Emissione', description: 'Contratti effettivamente emessi',
-    color: 'border-t-blue-500', iconKey: 'file-check' as ReportIconId,
+    color: 'border-t-emerald-500', iconKey: 'file-check' as ReportIconId,
     categories: [
       item('emissMotorSe', 'Motor', 'Contratti emessi', 'car'),
       item('emissUltraSalute', 'ULTRA Salute', 'Contratti emessi', 'heart'),
