@@ -49,23 +49,17 @@ l'anagrafica del cliente, il dettaglio della consegna nella raccolta isolata
 il salvataggio non aumenta il contatore; ritentare con lo stesso ID non
 duplica la consegna. Le consegne non compaiono come trattative aperte.
 
-### Winback automatico nel test
+### Winback nel report giornaliero
 
-La scheda in alto a destra deriva i totali dal registro isolato
-`pilot_winback_calls`, filtrando per operatore e giornata italiana. Il
-dettaglio permette di registrare una chiamata effettivamente effettuata
-su una scheda Winback reale della fonte 098 o assegnata al collaboratore.
-Salvare aggiorna solo il registro di test, mai `call_tasks` o i report
-operativi. Le regole verificano cliente e fonte contro la scheda reale.
+I tre contatori leggono le schede del calendario della fonte 098.
+**Da effettuare** indica le chiamate in programma oggi, **Arretrate** quelle
+ancora da effettuare con data precedente, **Fatte** quelle con un esito
+registrato oggi. Un tentativo con esito non raggiungibile può risultare tra
+le chiamate fatte e rimanere da effettuare o arretrato. Ogni contatore apre
+il calendario in sola lettura, su oggi e con il filtro selezionato.
 
-Ogni chiamata è un evento con un ID stabile per i tentativi di salvataggio:
-ritentare non duplica il conteggio. Correggere l’esito modifica lo stesso
-evento, preservando giorno, operatore, cliente e fonte. Chiamate ripetute
-sono eventi distinti; raggiunti e recuperati contano clienti unici, anche
-quando presenti su più polizze. Il riepilogo è disponibile anche nello
-storico. Gli eventi precedenti all'attivazione del registro non vengono
-ricostruiti dallo stato corrente delle chiamate e non vengono confusi con
-il vecchio contatore manuale. Nessun dato dimostrativo viene inserito online.
+Le chiamate già salvate nel registro di test `pilot_winback_calls` sono
+consultabili nello storico del report per la giornata selezionata.
 
 ## Funzionamento
 
@@ -118,9 +112,9 @@ Le tre raccolte del test sono:
 - `negotiation_test_customers`
 
 Le regole consentono l'accesso solo al proprietario nell'account di test e
-validano fonte, categoria e dati richiesti. Il pilota non può scrivere in
-`daily_reports` o modificare le chiamate operative. Il suo calendario chiamate
-è nascosto e il profilo è escluso dalle analisi amministrative.
+validano fonte, categoria e dati richiesti. Il profilo è escluso dalle
+analisi amministrative e accede al calendario della propria fonte in sola
+lettura dai contatori Winback.
 
 Il frontend e le regole Firestore devono essere pubblicati entrambi;
 il deploy Pages non aggiorna le regole. Usare il database indicato in

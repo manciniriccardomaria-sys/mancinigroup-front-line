@@ -81,6 +81,23 @@ const {
   importCallTasks, isTaskExpired, isTaskBeforeTrackingStart,
   isTaskWithinWorkingPeriod, isTaskActionable, getTaskCallbackDeadline,
 } = await loadModule('src/callCenter.ts', [firestoreMock]);
+const { matchesWinbackCalendarGroup } = await loadModule('src/winbackCalendar.ts', [firestoreMock]);
+
+test('Winback counters match the calendar day, callback deadlines and recorded outcomes', () => {
+  const groups = ['due', 'overdue', 'done'];
+  const matches = task => groups.filter(group => matchesWinbackCalendarGroup({ ...baseTask, ...task }, group, today));
+
+  assert.deepEqual(matches({ dueDate: today }), ['due']);
+  assert.deepEqual(matches({ eventDate: '2026-10-06' }), ['overdue']);
+  assert.deepEqual(matches({ dueDate: '2026-10-12' }), []);
+  assert.deepEqual(matches({ status: 'chiamato', calledDate: today }), ['done']);
+  assert.deepEqual(matches({ status: 'chiamato', calledDate: '2026-10-07' }), []);
+  assert.deepEqual(matches({ status: 'ripreso', updatedAt: '2026-10-07T22:30:00Z' }), ['done']);
+  assert.deepEqual(matches({ status: 'non_raggiungibile', updatedAt: '2026-10-08T10:00:00Z' }), ['overdue', 'done']);
+  assert.deepEqual(matches({ status: 'da_richiamare', callbackDate: today }), ['due']);
+  assert.deepEqual(matches({ status: 'da_richiamare', callbackDate: '2026-10-12', updatedAt: '2026-10-08T10:00:00Z' }), ['done']);
+  assert.deepEqual(matches({ category: 'campagna', dueDate: today }), []);
+});
 
 test('Winback remains editable and overdue after the anniversary, including legacy tasks', () => {
   for (const dueDate of ['2026-10-05', '2026-05-01']) {

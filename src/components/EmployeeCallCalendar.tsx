@@ -62,10 +62,14 @@ import CallCategoryFilter, {
   CampaignFilterOption,
 } from './CallCategoryFilter';
 import { subscribeToCallTasksBySourceCodes } from '../callTaskSubscriptions';
+import { matchesWinbackCalendarGroup, WINBACK_CALENDAR_GROUPS, type WinbackCalendarGroup } from '../winbackCalendar';
 
 type SourceMode = 'mine' | 'help';
 
-export default function EmployeeCallCalendar() {
+export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = false }: {
+  initialWinbackGroup?: WinbackCalendarGroup;
+  readOnly?: boolean;
+}) {
   const [tasks, setTasks] = useState<CallTask[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +78,10 @@ export default function EmployeeCallCalendar() {
   const [sourceMode, setSourceMode] = useState<SourceMode>('mine');
   const [selectedHelpSources, setSelectedHelpSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<CallCategorySelection[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<CallCategorySelection[]>(
+    () => initialWinbackGroup ? ['winback'] : [],
+  );
+  const [winbackGroup, setWinbackGroup] = useState(initialWinbackGroup);
   const [savingTaskId, setSavingTaskId] = useState('');
   const [callbackTaskId, setCallbackTaskId] = useState('');
   const [callbackDate, setCallbackDate] = useState('');
@@ -88,6 +95,7 @@ export default function EmployeeCallCalendar() {
   const currentEmail = auth.currentUser?.email || '';
   const currentName = employee?.name || auth.currentUser?.displayName || 'Dipendente';
   const today = getItalyDate();
+  const activeWinbackGroup = selectedDate === today ? winbackGroup : undefined;
 
   const selectedSourceCodes = useMemo(() => {
     if (sourceMode === 'mine') return [...ownSourceCodes];
@@ -225,11 +233,12 @@ export default function EmployeeCallCalendar() {
       getTaskCalendarDates(
         task, today, operationalTaskIds.has(task.id) && isTaskActionable(task, today),
       ).forEach(date => {
+        if (date === today && activeWinbackGroup && !matchesWinbackCalendarGroup(task, activeWinbackGroup, today)) return;
         counts.set(date, (counts.get(date) || 0) + 1);
       });
     });
     return counts;
-  }, [modeTasks, operationalTaskIds, today, selectedCategories]);
+  }, [modeTasks, operationalTaskIds, today, selectedCategories, activeWinbackGroup]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -248,7 +257,8 @@ export default function EmployeeCallCalendar() {
 
         return isSelectedDay &&
           matchesSearch &&
-          matchesCategorySelection(task, selectedCategories);
+          matchesCategorySelection(task, selectedCategories) &&
+          (!activeWinbackGroup || matchesWinbackCalendarGroup(task, activeWinbackGroup, today));
       })
       .sort((first, second) => {
         const firstDate = getTaskEffectiveDate(first);
@@ -257,7 +267,7 @@ export default function EmployeeCallCalendar() {
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
       });
-  }, [modeTasks, operationalTaskIds, selectedDate, today, search, selectedCategories]);
+  }, [modeTasks, operationalTaskIds, selectedDate, today, search, selectedCategories, activeWinbackGroup]);
 
   const overdueCount = modeTasks.filter(task =>
     getTaskEffectiveDate(task) < today && operationalTaskIds.has(task.id) && isTaskActionable(task, today)
@@ -516,7 +526,10 @@ export default function EmployeeCallCalendar() {
                   <button
                     key={date}
                     type="button"
-                    onClick={() => setSelectedDate(date)}
+                    onClick={() => {
+                      setSelectedDate(date);
+                      if (date !== today) setWinbackGroup(undefined);
+                    }}
                     className={`h-10 min-w-0 rounded-md text-xs relative flex items-center justify-center ${
                       selected
                         ? 'bg-[#003781] text-white font-bold'
@@ -607,16 +620,30 @@ export default function EmployeeCallCalendar() {
                 </label>
                 <CallCategoryFilter
                   selected={selectedCategories}
-                  onChange={setSelectedCategories}
+                  onChange={categories => {
+                    setSelectedCategories(categories);
+                    setWinbackGroup(undefined);
+                  }}
                   campaigns={campaignOptions}
                 />
               </div>
             </div>
 
+            {activeWinbackGroup && (
+              <button
+                type="button"
+                onClick={() => setWinbackGroup(undefined)}
+                aria-label="Rimuovi il filtro sullo stato Winback"
+                className="mb-3 inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-[#003781] hover:bg-blue-100"
+              >
+                {WINBACK_CALENDAR_GROUPS.find(group => group.id === activeWinbackGroup)?.label}
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
             <p className="mb-4 text-xs text-slate-500">
               Le chiamate restano consultabili nella data prevista e nella data dell’ultima azione,
               anche dopo la chiusura o la scadenza. Seleziona un giorno precedente per vedere lo storico.
-              {' '}I clienti Winback restano modificabili anche dopo la data anniversario.
+              {!readOnly && ' I clienti Winback restano modificabili anche dopo la data anniversario.'}
             </p>
 
             <div className="space-y-3">
@@ -630,8 +657,8 @@ export default function EmployeeCallCalendar() {
                   isTaskWithinWorkingPeriod(task, today);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
-                const canEdit = isOperational && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
-                const needsClaim = isOperational && !isOwnSource && !task.assignedToUid;
+                const canEdit = !readOnly && isOperational && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
+                const needsClaim = !readOnly && isOperational && !isOwnSource && !task.assignedToUid;
 
                 return (
                   <article

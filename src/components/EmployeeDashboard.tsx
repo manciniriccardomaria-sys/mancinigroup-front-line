@@ -46,8 +46,9 @@ import ProposalDialog from './ProposalDialog';
 import NegotiationsTab from './NegotiationsTab';
 import { adjustPilotReportCount } from '../negotiations';
 import PilotDailyReport from './PilotDailyReport';
-import PilotWinbackSummary from './PilotWinbackSummary';
+import PilotWinbackSummary, { PilotWinbackHistory } from './PilotWinbackSummary';
 import { PILOT_REPORT_CATEGORIES, PILOT_RETIRED_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
+import type { WinbackCalendarGroup } from '../winbackCalendar';
 
 export default function EmployeeDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -61,6 +62,7 @@ export default function EmployeeDashboard() {
   const [error, setError] = useState('');
   const [today, setToday] = useState(() => getItalyDate());
   const [selectedView, setSelectedView] = useState<'calendar' | 'report' | 'negotiations'>('report');
+  const [initialWinbackGroup, setInitialWinbackGroup] = useState<WinbackCalendarGroup>();
   const [proposalCategory, setProposalCategory] = useState<ReportCategory | null>(null);
   const [showReportHistory, setShowReportHistory] = useState(false);
   const [historyDate, setHistoryDate] = useState(() =>
@@ -410,7 +412,10 @@ export default function EmployeeDashboard() {
           )}
         </div>
 
-        {selectedView === 'calendar' && <EmployeeCallCalendar />}
+        {selectedView === 'calendar' && <EmployeeCallCalendar
+          initialWinbackGroup={initialWinbackGroup}
+          readOnly={negotiationsEnabled}
+        />}
         {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab />}
 
         {selectedView === 'report' && (
@@ -460,7 +465,12 @@ export default function EmployeeDashboard() {
                 </button>
               </div>
               </div>
-              {negotiationsEnabled && <PilotWinbackSummary date={showReportHistory ? historyDate : today} today={today} />}
+              {negotiationsEnabled && employee && (showReportHistory
+                ? <PilotWinbackHistory date={historyDate} />
+                : <PilotWinbackSummary today={today} sourceCodes={employee.sourceCodes} onOpenCalendar={group => {
+                  setInitialWinbackGroup(group);
+                  setSelectedView('calendar');
+                }} />)}
             </div>
 
             {showReportHistory ? (
