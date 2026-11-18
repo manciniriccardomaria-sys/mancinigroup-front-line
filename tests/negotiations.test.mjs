@@ -123,6 +123,18 @@ test('other pilot counters preserve proposal counts and never become negative', 
   for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
 });
 
+test('third-party Motor and Retail claims have independent counters from reception claims', async () => {
+  reset();
+  const reportPath = 'negotiation_test_reports/pilot_' + getItalyDate();
+  globalThis.negotiationStore[reportPath] = { values: { sinistriMotor: 2, sinistriRetail: 3 } };
+  await service.adjustPilotReportCount('sinistriMotorTerzi', 1);
+  await service.adjustPilotReportCount('sinistriRetailTerzi', 1);
+  await service.adjustPilotReportCount('sinistriRetailTerzi', 1);
+  assert.deepEqual(globalThis.negotiationStore[reportPath].values, {
+    sinistriMotor: 2, sinistriRetail: 3, sinistriMotorTerzi: 1, sinistriRetailTerzi: 2,
+  });
+});
+
 test('Vitariv saves customer details and a delivery atomically without opening a negotiation; retries do not duplicate', async () => {
   reset();
   globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { vitarivConsegna: 2, winbackMag25: 4 } };

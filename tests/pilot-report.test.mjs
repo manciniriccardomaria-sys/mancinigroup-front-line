@@ -15,7 +15,7 @@ test('the pilot has exactly four sections, unique counters and all agreed produc
   assert.deepEqual(catalog.PILOT_REPORT_SECTIONS.map(section => section.title), ['Ricezione', 'Promozione', 'Emissione', 'Terzi']);
   const ids = catalog.PILOT_REPORT_CATEGORIES.map(category => category.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(ids.length, 29);
+  assert.equal(ids.length, 31);
   for (const retired of ['prevRetailSe', 'emissRetailSe', 'prevRetailTerzi', 'winbackMag25', 'scegliAllianzGen26']) assert.equal(ids.includes(retired), false);
   const promotion = catalog.PILOT_REPORT_SECTIONS[1].categories.map(category => category.id);
   for (const id of ['vitarivConsegna', 'scegliAllianzConsegna', 'recensioni']) assert.equal(promotion.includes(id), true);
@@ -28,6 +28,10 @@ test('the pilot has exactly four sections, unique counters and all agreed produc
   const protectionIssuance = issuance.categories.find(category => category.id === 'emissProtection');
   assert.equal(protectionIssuance.label, 'Protection');
   assert.equal(protectionIssuance.activity, 'Contratti emessi');
+  const thirdParty = catalog.PILOT_REPORT_SECTIONS.find(section => section.id === 'thirdParty');
+  assert.deepEqual(thirdParty.categories.slice(-2).map(({ id, label }) => [id, label]), [
+    ['sinistriMotorTerzi', 'Sinistri Motor'], ['sinistriRetailTerzi', 'Sinistri Retail'],
+  ]);
 });
 
 test('Protection groups the two products while preserving their saved counters; Vitariv remains a separate customer activity', () => {

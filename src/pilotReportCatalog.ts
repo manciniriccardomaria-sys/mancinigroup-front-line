@@ -59,7 +59,7 @@ export const PILOT_REPORT_SECTIONS = [
     ],
   },
   {
-    id: 'thirdParty', title: 'Terzi', description: 'Preventivi preparati per terzi',
+    id: 'thirdParty', title: 'Terzi', description: 'Preventivi e sinistri per terzi',
     color: 'border-t-amber-500', iconKey: 'car-front' as ReportIconId,
     categories: [
       item('prevMotorTerzi', 'Motor', 'Preventivi per terzi', 'car'),
@@ -67,6 +67,8 @@ export const PILOT_REPORT_SECTIONS = [
       item('prevSmegTerzi', 'SMEG', 'Preventivi per terzi', 'store'),
       item('prevUltraCasaTerzi', 'ULTRA Casa', 'Preventivi per terzi', 'home'),
       item('prevUltraImpresaTerzi', 'ULTRA Impresa', 'Preventivi per terzi', 'briefcase'),
+      item('sinistriMotorTerzi', 'Sinistri Motor', 'Aperture per terzi', 'shield-alert'),
+      item('sinistriRetailTerzi', 'Sinistri Retail', 'Aperture per terzi', 'shield-check'),
     ],
   },
 ];
