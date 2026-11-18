@@ -55,6 +55,7 @@ export const PILOT_REPORT_SECTIONS = [
       item('emissSmeg', 'SMEG', 'Contratti emessi', 'store'),
       item('emissUltraCasa', 'ULTRA Casa', 'Contratti emessi', 'home'),
       item('emissUltraImpresa', 'ULTRA Impresa', 'Contratti emessi', 'briefcase'),
+      item('emissProtection', 'Protection', 'Contratti emessi', 'shield-check'),
     ],
   },
   {

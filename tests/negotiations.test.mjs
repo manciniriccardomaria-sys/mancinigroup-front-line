@@ -117,6 +117,8 @@ test('other pilot counters preserve proposal counts and never become negative', 
   await service.adjustPilotReportCount('incassi', -1);
   await service.adjustPilotReportCount('incassi', -1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
+  await service.adjustPilotReportCount('emissProtection', 1);
+  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0, emissProtection: 1 });
   await assert.rejects(service.adjustPilotReportCount('smeg', -1));
   for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
 });
