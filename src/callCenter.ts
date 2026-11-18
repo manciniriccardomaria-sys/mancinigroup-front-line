@@ -862,22 +862,31 @@ export function isTaskExpired(
   task: CallTask,
   referenceDate = getItalyDate(),
 ): boolean {
-  return task.category !== 'winback' &&
-    !isTaskClosed(task.status) && task.eventDate < referenceDate;
+  return !isTaskClosed(task.status) && getTaskWindowEnd(task) < referenceDate;
 }
 
 export function isTaskBeforeTrackingStart(task: CallTask): boolean {
-  return task.category !== 'winback' && !isTaskClosed(task.status) &&
+  return !isTaskClosed(task.status) &&
     getTaskEffectiveDate(task) < CALL_TRACKING_START_DATE;
+}
+
+function getTaskWindowEnd(task: CallTask): string {
+  if (task.category === 'winback' && task.status === 'da_richiamare' &&
+    task.callbackDate && task.callbackDate > task.eventDate) {
+    return task.callbackDate;
+  }
+  return task.eventDate;
 }
 
 export function isTaskWithinWorkingPeriod(
   task: CallTask,
   referenceDate = getItalyDate(),
 ): boolean {
-  // L'anniversario Winback pianifica il contatto, non chiude la lavorazione.
-  return task.category === 'winback' ||
-    (task.eventDate >= referenceDate && !isTaskBeforeTrackingStart(task));
+  return getTaskWindowEnd(task) >= referenceDate && !isTaskBeforeTrackingStart(task);
+}
+
+export function canEditTaskOutcome(task: CallTask, referenceDate = getItalyDate()): boolean {
+  return task.category === 'winback' || isTaskWithinWorkingPeriod(task, referenceDate);
 }
 
 export function getTaskCallbackDeadline(task: CallTask): string | undefined {

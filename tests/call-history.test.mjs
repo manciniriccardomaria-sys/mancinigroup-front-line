@@ -79,7 +79,7 @@ const firestoreMock = {
 };
 const {
   importCallTasks, isTaskExpired, isTaskBeforeTrackingStart,
-  isTaskWithinWorkingPeriod, isTaskActionable, getTaskCallbackDeadline,
+  isTaskWithinWorkingPeriod, canEditTaskOutcome, isTaskActionable, getTaskCallbackDeadline,
 } = await loadModule('src/callCenter.ts', [firestoreMock]);
 const { matchesWinbackCalendarGroup } = await loadModule('src/winbackCalendar.ts', [firestoreMock]);
 
@@ -88,7 +88,8 @@ test('Winback counters match the calendar day, callback deadlines and recorded o
   const matches = task => groups.filter(group => matchesWinbackCalendarGroup({ ...baseTask, ...task }, group, today));
 
   assert.deepEqual(matches({ dueDate: today }), ['due']);
-  assert.deepEqual(matches({ eventDate: '2026-10-06' }), ['overdue']);
+  assert.deepEqual(matches({ eventDate: today }), ['overdue']);
+  assert.deepEqual(matches({ eventDate: '2026-10-06' }), []);
   assert.deepEqual(matches({ dueDate: '2026-10-12' }), []);
   assert.deepEqual(matches({ status: 'chiamato', calledDate: today }), ['done']);
   assert.deepEqual(matches({ status: 'chiamato', calledDate: '2026-10-07' }), []);
@@ -99,18 +100,22 @@ test('Winback counters match the calendar day, callback deadlines and recorded o
   assert.deepEqual(matches({ category: 'campagna', dueDate: today }), []);
 });
 
-test('Winback remains editable and overdue after the anniversary, including legacy tasks', () => {
-  for (const dueDate of ['2026-10-05', '2026-05-01']) {
+test('July Winback stays editable in history and outside the November queue', () => {
+  const november = '2026-11-18';
+  for (const dueDate of ['2026-07-06', '2026-05-01']) {
     for (const status of ['da_chiamare', 'non_raggiungibile', 'da_richiamare']) {
-      const task = { ...baseTask, dueDate, eventDate: '2026-10-06', status,
-        ...(status === 'da_richiamare' ? { callbackDate: '2026-10-07' } : {}) };
+      const task = { ...baseTask, dueDate, eventDate: '2026-07-21', status,
+        ...(status === 'da_richiamare' ? { callbackDate: '2026-07-20' } : {}) };
       const original = structuredClone(task);
-      assert.equal(isTaskExpired(task, today), false);
-      assert.equal(isTaskBeforeTrackingStart(task), false);
-      assert.equal(isTaskWithinWorkingPeriod(task, today), true);
-      assert.equal(isTaskActionable(task, today), true);
-      assert.ok(history.getTaskCalendarDates(task, today, isTaskActionable(task, today)).includes(today));
-      assert.deepEqual(task, original, 'restoring access must not rewrite dates or outcomes');
+      assert.equal(isTaskExpired(task, november), true);
+      assert.equal(isTaskWithinWorkingPeriod(task, november), false);
+      assert.equal(canEditTaskOutcome(task, november), true);
+      assert.equal(isTaskActionable(task, november), false);
+      assert.equal(matchesWinbackCalendarGroup(task, 'overdue', november), false);
+      const dates = history.getTaskCalendarDates(task, november, isTaskActionable(task, november));
+      assert.ok(dates.includes(dueDate));
+      assert.ok(!dates.includes(november));
+      assert.deepEqual(task, original);
     }
   }
 });
@@ -118,10 +123,10 @@ test('Winback remains editable and overdue after the anniversary, including lega
 test('closed Winback outcomes can be corrected after the anniversary without reentering the queue', () => {
   for (const status of ['chiamato', 'ripreso', 'non_gradito', 'cliente_perso', 'cambio_rottamazione_macchina']) {
     const task = { ...baseTask, status, eventDate: '2026-10-06', updatedAt: '2026-10-07T12:00:00Z' };
-    assert.equal(isTaskWithinWorkingPeriod(task, today), true);
+    assert.equal(canEditTaskOutcome(task, today), true);
     assert.equal(isTaskActionable(task, today), false);
     assert.deepEqual(history.getTaskCalendarDates(task, today, false), ['2026-10-05', '2026-10-07']);
-    assert.equal(isTaskActionable({ ...task, status: 'da_chiamare' }, today), true);
+    assert.equal(isTaskActionable({ ...task, status: 'da_chiamare' }, today), false);
   }
 });
 
@@ -131,7 +136,8 @@ test('Winback callbacks can follow the anniversary and only become due on their 
   assert.equal(isTaskWithinWorkingPeriod(task, today), true);
   assert.equal(isTaskActionable(task, today), false);
   assert.equal(isTaskActionable(task, '2026-10-12'), true);
-  assert.equal(isTaskActionable(task, '2026-10-13'), true);
+  assert.equal(matchesWinbackCalendarGroup(task, 'due', '2026-10-12'), true);
+  assert.equal(isTaskActionable(task, '2026-10-13'), false);
   assert.deepEqual(history.getTaskCalendarDates(task, today, false), ['2026-10-05', '2026-10-12']);
   assert.equal(isTaskActionable({ ...baseTask, dueDate: '2026-10-12' }, today), false);
 });
@@ -144,6 +150,7 @@ test('other categories keep their expiration, tracking start and callback deadli
     const expired = { ...task, eventDate: '2026-10-06' };
     assert.equal(isTaskExpired(expired, today), true);
     assert.equal(isTaskWithinWorkingPeriod(expired, today), false);
+    assert.equal(canEditTaskOutcome(expired, today), false);
     assert.equal(isTaskActionable(expired, today), false);
     assert.equal(isTaskWithinWorkingPeriod({ ...expired, status: 'ripreso' }, today), false);
     const beforeTracking = { ...task, dueDate: '2026-05-01' };

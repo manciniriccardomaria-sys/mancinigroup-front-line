@@ -40,6 +40,7 @@ import { SOURCE_DIRECTORY } from '../sourceDirectory';
 import {
   Campaign,
   CallTask,
+  canEditTaskOutcome,
   getCampaignKind,
   getTaskCallbackDeadline,
   getTaskCategoryLabel,
@@ -275,7 +276,8 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
 
   const recoveredTasks = useMemo(
     () => modeTasks
-      .filter(task => task.status === 'ripreso' && isTaskWithinWorkingPeriod(task, today))
+      .filter(task => task.status === 'ripreso' &&
+        (task.category === 'winback' || isTaskWithinWorkingPeriod(task, today)))
       .sort((first, second) => {
         const dateComparison = first.eventDate.localeCompare(second.eventDate);
         if (dateComparison !== 0) return dateComparison;
@@ -655,10 +657,12 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
                 const lastActionDate = getTaskLastActionDate(task);
                 const isOperational = operationalTaskIds.has(task.id) &&
                   isTaskWithinWorkingPeriod(task, today);
+                const isOutcomeEditable = operationalTaskIds.has(task.id) &&
+                  canEditTaskOutcome(task, today);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
-                const canEdit = !readOnly && isOperational && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
-                const needsClaim = !readOnly && isOperational && !isOwnSource && !task.assignedToUid;
+                const canEdit = !readOnly && isOutcomeEditable && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
+                const needsClaim = !readOnly && isOutcomeEditable && !isOwnSource && !task.assignedToUid;
 
                 return (
                   <article
@@ -799,7 +803,7 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
 
                         {!isOperational && (
                           <p className="text-[11px] text-slate-500 mt-2">
-                            {isExpired ? 'Scaduta · consultazione storico' : 'Consultazione storico'}
+                            {isExpired ? 'Finestra scaduta · storico' : 'Storico'}
                           </p>
                         )}
 

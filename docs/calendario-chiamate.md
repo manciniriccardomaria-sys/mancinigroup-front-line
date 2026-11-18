@@ -46,8 +46,9 @@ La cronologia conserva autore, data e ora di ogni variazione.
 Le chiamate scadute che non risultano completate restano visibili nel
 calendario e nell'elenco operativo, evidenziate come arretrate, soltanto fino
 alla data dell'evento. Dal giorno successivo alla scadenza, rata o anniversario
-winback, il cliente scompare dalle chiamate attive e resta consultabile nello
-storico.
+Winback, il cliente scompare dalle chiamate attive e resta consultabile nello
+storico. Le chiamate Winback restano modificabili da lì. Se viene fissato un
+richiamo oltre l'anniversario, la chiamata torna in coda il giorno del richiamo.
 
 Il monitoraggio operativo parte dal 19 giugno 2026. Le finestre di chiamata
 iniziate prima di questa data sono archiviate come precedenti all'attivazione,
@@ -57,8 +58,8 @@ Per rate e scadenze annuali viene generato un ciclo distinto ogni 6 o 12 mesi.
 Il nuovo ciclo parte con stato `Da chiamare` e non sovrascrive lo storico del
 ciclo precedente.
 
-Una chiamata rinviata usa la nuova data indicata per il richiamo, che non puo'
-superare la data dell'evento.
+Una chiamata rinviata usa la nuova data indicata per il richiamo. Solo per il
+Winback è possibile fissare un richiamo oltre la data dell'evento.
 
 ## Informazioni necessarie prima dell'implementazione
 
