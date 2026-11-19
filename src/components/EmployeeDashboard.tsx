@@ -41,10 +41,10 @@ import {
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
-import { isCustomerActivityCategory, isNegotiationsPilot, isProposalCategory, PILOT_REPORTS_COLLECTION } from '../negotiationModel';
+import { getEmployeeReportCollection, hasNegotiationsAccess, isCustomerActivityCategory, isNegotiationsPilot } from '../negotiationModel';
 import ProposalDialog from './ProposalDialog';
 import NegotiationsTab from './NegotiationsTab';
-import { adjustPilotReportCount } from '../negotiations';
+import { adjustDetailedReportCount } from '../negotiations';
 import PilotDailyReport from './PilotDailyReport';
 import PilotWinbackSummary, { PilotWinbackHistory } from './PilotWinbackSummary';
 import { PILOT_REPORT_CATEGORIES, PILOT_RETIRED_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
@@ -77,8 +77,9 @@ export default function EmployeeDashboard() {
     loading: categoriesLoading,
   } = useReportCategories();
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
-  const negotiationsEnabled = isNegotiationsPilot(auth.currentUser?.email);
-  const reportsCollection = negotiationsEnabled ? PILOT_REPORTS_COLLECTION : 'daily_reports';
+  const isPilot = isNegotiationsPilot(auth.currentUser?.email);
+  const negotiationsEnabled = hasNegotiationsAccess(auth.currentUser?.email);
+  const reportsCollection = getEmployeeReportCollection(auth.currentUser?.email);
   const categories = useMemo(() => negotiationsEnabled
     ? PILOT_REPORT_CATEGORIES.map(category => ({ ...category, label: pilotActivityLabel(category) }))
     : storedCategories, [negotiationsEnabled, storedCategories]);
@@ -214,14 +215,14 @@ export default function EmployeeDashboard() {
     }
   ), [categories]);
 
-  useEffect(() => negotiationsEnabled ? undefined : subscribeToCallTasksForEmployee(
+  useEffect(() => isPilot ? undefined : subscribeToCallTasksForEmployee(
     employee?.sourceCodes || [],
     auth.currentUser?.uid || '',
     setCallTasks,
     callError => {
       console.error('Error loading call notification count:', callError);
     },
-  ), [employee, negotiationsEnabled]);
+  ), [employee, isPilot]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
@@ -261,7 +262,7 @@ export default function EmployeeDashboard() {
     if (negotiationsEnabled) {
       setSaving(true);
       try {
-        await adjustPilotReportCount(categoryId, delta);
+        await adjustDetailedReportCount(categoryId, delta);
       } catch (saveError) {
         setError(getReportErrorMessage(saveError));
       } finally {
@@ -335,7 +336,7 @@ export default function EmployeeDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-lg leading-none">{negotiationsEnabled ? employee?.name : auth.currentUser?.displayName}</h1>
-                {negotiationsEnabled && <span className="hidden lg:inline-flex rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">Test · Fonte 098</span>}
+                {isPilot && <span className="hidden lg:inline-flex rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">Test · Fonte 098</span>}
               </div>
               <p className="text-blue-200 text-xs mt-1 flex items-center gap-1">
                 <Calendar size={12} />
@@ -359,7 +360,7 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className={`max-w-7xl mx-auto px-4 ${negotiationsEnabled ? 'mt-2' : 'mt-4'}`}>
-        {negotiationsEnabled && (
+        {isPilot && (
           <div className="mb-2 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm lg:hidden">
             <strong>Profilo di test · Riccardo · Fonte 098.</strong> Prova la nuova rendicontazione. Le attività con scheda cliente vengono conteggiate al salvataggio.
           </div>
@@ -370,7 +371,7 @@ export default function EmployeeDashboard() {
           </div>
         )}
 
-        <div className={`grid grid-cols-1 sm:grid-cols-2 bg-white border border-slate-200 rounded-lg w-full sm:w-fit ${negotiationsEnabled ? 'mb-2 p-0.5' : 'mb-4 p-1'}`}>
+        <div className={`grid grid-cols-1 ${negotiationsEnabled && !isPilot ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} bg-white border border-slate-200 rounded-lg w-full sm:w-fit ${negotiationsEnabled ? 'mb-2 p-0.5' : 'mb-4 p-1'}`}>
           <button
             type="button"
             onClick={() => setSelectedView('report')}
@@ -383,9 +384,12 @@ export default function EmployeeDashboard() {
             <ClipboardList size={17} />
             Report giornaliero
           </button>
-          {!negotiationsEnabled && <button
+          {!isPilot && <button
             type="button"
-            onClick={() => setSelectedView('calendar')}
+            onClick={() => {
+              setInitialWinbackGroup(undefined);
+              setSelectedView('calendar');
+            }}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold ${
               selectedView === 'calendar'
                 ? 'bg-[#003781] text-white'
@@ -413,10 +417,11 @@ export default function EmployeeDashboard() {
         </div>
 
         {selectedView === 'calendar' && <EmployeeCallCalendar
+          key={initialWinbackGroup ?? 'calendar'}
           initialWinbackGroup={initialWinbackGroup}
-          readOnly={negotiationsEnabled}
+          readOnly={isPilot}
         />}
-        {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab />}
+        {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab isPilot={isPilot} />}
 
         {selectedView === 'report' && (
           <section className={negotiationsEnabled ? 'space-y-2' : 'space-y-3'}>
@@ -466,7 +471,7 @@ export default function EmployeeDashboard() {
               </div>
               </div>
               {negotiationsEnabled && employee && (showReportHistory
-                ? <PilotWinbackHistory date={historyDate} />
+                ? isPilot && <PilotWinbackHistory date={historyDate} />
                 : <PilotWinbackSummary today={today} sourceCodes={employee.sourceCodes} onOpenCalendar={group => {
                   setInitialWinbackGroup(group);
                   setSelectedView('calendar');
@@ -557,8 +562,8 @@ export default function EmployeeDashboard() {
                               <button
                                 onClick={() => updateCount(cat.id, -1)}
                                 className="p-1.5 hover:bg-white hover:text-red-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
-                                disabled={value === 0 || saving || (negotiationsEnabled && isProposalCategory(cat.id))}
-                                title={negotiationsEnabled && isProposalCategory(cat.id) ? 'Il conteggio corrisponde alle proposte salvate. Gestisci gli esiti in Trattative.' : `Diminuisci ${cat.label}`}
+                                disabled={value === 0 || saving}
+                                title={`Diminuisci ${cat.label}`}
                               >
                                 <Minus size={16} />
                               </button>
@@ -566,10 +571,10 @@ export default function EmployeeDashboard() {
                                 {value}
                               </div>
                               <button
-                                onClick={() => negotiationsEnabled && isProposalCategory(cat.id) ? setProposalCategory(cat) : updateCount(cat.id, 1)}
+                                onClick={() => updateCount(cat.id, 1)}
                                 disabled={saving || Boolean(proposalCategory)}
                                 className="p-1.5 hover:bg-white hover:text-blue-600 rounded-md transition-all active:scale-90 disabled:opacity-30"
-                                title={negotiationsEnabled && isProposalCategory(cat.id) ? `Nuova proposta: ${cat.label}` : `Aumenta ${cat.label}`}
+                                title={`Aumenta ${cat.label}`}
                               >
                                 <Plus size={16} />
                               </button>

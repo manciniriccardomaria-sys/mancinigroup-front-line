@@ -11,7 +11,7 @@ const STATUS_LABELS: Record<NegotiationStatus, string> = { open: 'In corso', ko:
 const filterClass = 'w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white';
 const displayDate = (value: string) => value.split('-').reverse().join('/');
 
-export default function NegotiationsTab() {
+export default function NegotiationsTab({ isPilot }: { isPilot: boolean }) {
   const [items, setItems] = useState<Negotiation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -46,7 +46,7 @@ export default function NegotiationsTab() {
           <h2 className="flex items-center gap-2 font-bold text-xl text-slate-800"><Handshake size={22} className="text-[#003781]" />Trattative</h2>
           <p className="text-sm text-slate-500 mt-1">Proposte per fonte · {filtered.length} di {items.length} trattative</p>
         </div>
-        <span className="rounded-full px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold">Dati di test</span>
+        {isPilot && <span className="rounded-full px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold">Dati di test</span>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -85,7 +85,7 @@ export default function NegotiationsTab() {
       {(loadError || saveError) && <p role="alert" className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm">{loadError || saveError}</p>}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         {loading ? <p className="flex gap-2 justify-center py-12 text-sm text-slate-500"><Loader2 size={18} className="animate-spin" />Caricamento trattative...</p> : filtered.length === 0 ? (
-          <div className="text-center py-14 px-4"><Handshake size={32} className="mx-auto text-slate-300 mb-3" /><p className="font-bold text-slate-700">{loadError ? 'Trattative non disponibili' : items.length ? 'Nessuna trattativa corrisponde ai filtri' : 'Nessuna proposta registrata'}</p><p className="text-sm text-slate-500 mt-1">{loadError ? 'Verifica l’accesso al database di test.' : 'Usa il + su una voce di proposta nel report giornaliero.'}</p></div>
+          <div className="text-center py-14 px-4"><Handshake size={32} className="mx-auto text-slate-300 mb-3" /><p className="font-bold text-slate-700">{loadError ? 'Trattative non disponibili' : items.length ? 'Nessuna trattativa corrisponde ai filtri' : 'Nessuna proposta registrata'}</p>{!loadError && <p className="text-sm text-slate-500 mt-1">Usa il + su una voce di proposta nel report giornaliero.</p>}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">

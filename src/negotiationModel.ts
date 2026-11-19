@@ -1,6 +1,7 @@
 import { differenceInCalendarDays, isValid, parseISO } from 'date-fns';
 
 export const NEGOTIATIONS_PILOT_EMAIL = 'manciniriccardo9@gmail.com';
+const MARINA_EMAIL = 'b.marinamancinigroup@gmail.com';
 export const PILOT_REPORTS_COLLECTION = 'negotiation_test_reports';
 export const NEGOTIATIONS_COLLECTION = 'negotiation_test_deals';
 export const NEGOTIATION_CUSTOMERS_COLLECTION = 'negotiation_test_customers';
@@ -8,6 +9,14 @@ export const VITARIV_DELIVERIES_COLLECTION = 'negotiation_test_deliveries';
 
 export function isNegotiationsPilot(email: string | null | undefined): boolean {
   return email?.trim().toLowerCase() === NEGOTIATIONS_PILOT_EMAIL;
+}
+
+export function hasNegotiationsAccess(email: string | null | undefined): boolean {
+  return isNegotiationsPilot(email) || email?.trim().toLowerCase() === MARINA_EMAIL;
+}
+
+export function getEmployeeReportCollection(email: string | null | undefined): string {
+  return isNegotiationsPilot(email) ? PILOT_REPORTS_COLLECTION : 'daily_reports';
 }
 
 // Deliveries are customer activities stored separately from proposals.

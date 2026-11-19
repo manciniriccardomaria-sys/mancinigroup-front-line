@@ -47,8 +47,31 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.email == 'manciniriccardo9@gmail.com';
     }
 
+    function isMarina() {
+      return isAuthenticated() && request.auth.token.email == 'b.marinamancinigroup@gmail.com';
+    }
+
+    function hasNegotiationsAccess() {
+      return isNegotiationsPilot() || isMarina();
+    }
+
     function ownsPilotId(documentId) {
       return isNegotiationsPilot() && documentId.matches(request.auth.uid + '_.*');
+    }
+
+    function ownsNegotiationId(documentId) {
+      return hasNegotiationsAccess() && documentId.matches(request.auth.uid + '_.*');
+    }
+
+    function marinaSourceCodes() {
+      return ['005', '043'];
+    }
+
+    function isValidNegotiationSource(data) {
+      return (isNegotiationsPilot() && data.ownerName == 'Riccardo collaboratore' &&
+          data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA') ||
+        (isMarina() && data.ownerName == 'Marina Bartoli' &&
+          data.sourceCode in marinaSourceCodes() && data.sourceName == 'BARTOLI MARINA ANGELA');
     }
 
     function isValidNegotiationCustomer(data) {
@@ -66,8 +89,7 @@ service cloud.firestore {
           'sourceCode', 'sourceName', 'categoryId', 'proposalLabel', 'proposalDate',
           'status', 'createdAt', 'updatedAt'
         ]) && isValidNegotiationCustomer(data) &&
-        data.ownerName == 'Riccardo collaboratore' &&
-        data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA' &&
+        isValidNegotiationSource(data) &&
         data.categoryId in [
           'prevMotorSe', 'prevRetailSe', 'prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa',
           'smeg', 'longevityCare', 'scegliAllianzGen26', 'contattiFondoPensione',
@@ -490,7 +512,7 @@ service cloud.firestore {
         ((ownsReportId(reportId) && request.resource.data.userId == request.auth.uid) || isAdmin());
     }
 
-    // Isolated pilot data: no entries in the operational daily reports or client archives.
+    // The pilot continues to use a separate report collection.
     match /negotiation_test_reports/{reportId} {
       allow get: if ownsPilotId(reportId);
       allow create, update: if ownsPilotId(reportId) &&
@@ -500,34 +522,33 @@ service cloud.firestore {
     }
 
     match /negotiation_test_customers/{customerId} {
-      allow get: if ownsPilotId(customerId);
-      allow create, update: if ownsPilotId(customerId) &&
+      allow get: if ownsNegotiationId(customerId);
+      allow create, update: if ownsNegotiationId(customerId) &&
         request.resource.data.keys().hasOnly(['ownerUid', 'fiscalCode', 'firstName', 'lastName', 'birthDate', 'updatedAt']) &&
         isValidNegotiationCustomer(request.resource.data) &&
         customerId == request.auth.uid + '_' + request.resource.data.fiscalCode;
     }
 
     match /negotiation_test_deals/{dealId} {
-      allow get: if ownsPilotId(dealId);
-      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
-      allow create: if ownsPilotId(dealId) && isValidNegotiation(request.resource.data) &&
+      allow get: if ownsNegotiationId(dealId);
+      allow list: if hasNegotiationsAccess() && resource.data.ownerUid == request.auth.uid;
+      allow create: if ownsNegotiationId(dealId) && isValidNegotiation(request.resource.data) &&
         request.resource.data.status == 'open' && request.resource.data.createdAt == request.time;
-      allow update: if ownsPilotId(dealId) && resource.data.ownerUid == request.auth.uid &&
+      allow update: if ownsNegotiationId(dealId) && resource.data.ownerUid == request.auth.uid &&
         isValidNegotiation(request.resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
     }
 
     match /negotiation_test_deliveries/{deliveryId} {
-      allow get: if ownsPilotId(deliveryId);
-      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
-      allow create: if ownsPilotId(deliveryId) &&
+      allow get: if ownsNegotiationId(deliveryId);
+      allow list: if hasNegotiationsAccess() && resource.data.ownerUid == request.auth.uid;
+      allow create: if ownsNegotiationId(deliveryId) &&
         request.resource.data.keys().hasOnly([
           'ownerUid', 'ownerName', 'fiscalCode', 'firstName', 'lastName', 'birthDate',
           'sourceCode', 'sourceName', 'categoryId', 'activityLabel', 'activityDate',
           'createdAt', 'updatedAt'
         ]) && isValidNegotiationCustomer(request.resource.data) &&
-        request.resource.data.ownerName == 'Riccardo collaboratore' &&
-        request.resource.data.sourceCode == '098' && request.resource.data.sourceName == 'MANCINI RICCARDO MARIA' &&
+        isValidNegotiationSource(request.resource.data) &&
         request.resource.data.categoryId == 'vitarivConsegna' &&
         request.resource.data.activityLabel is string && request.resource.data.activityLabel.size() > 0 && request.resource.data.activityLabel.size() < 150 &&
         request.resource.data.activityDate is string && request.resource.data.activityDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
@@ -575,14 +596,14 @@ service cloud.firestore {
     }
 
     match /new_clients/{clientId} {
-      allow read: if isAdmin() || isNegotiationsPilot();
+      allow read: if isAdmin() || isNegotiationsPilot() || (isMarina() && resource.data.sourceCode in marinaSourceCodes());
       allow create, update: if isAdmin() &&
         isValidNewClient(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /expiration_records/{recordId} {
-      allow read: if isAdmin() || isNegotiationsPilot();
+      allow read: if isAdmin() || isNegotiationsPilot() || (isMarina() && resource.data.sourceCode in marinaSourceCodes());
       allow create, update: if isAdmin() &&
         isValidExpirationRecord(request.resource.data);
       allow delete: if isAdmin();
@@ -596,7 +617,8 @@ service cloud.firestore {
     }
 
     match /customer_registry/{identifier} {
-      allow get: if isAdmin() || (isNegotiationsPilot() && identifier.matches('^[A-Z0-9]{16}$'));
+      allow get: if isAdmin() || (identifier.matches('^[A-Z0-9]{16}$') &&
+        (isNegotiationsPilot() || (isMarina() && resource.data.sourceCodes.hasAny(marinaSourceCodes()))));
       allow list: if isAdmin();
       allow create, update: if isAdmin() &&
         request.resource.data.keys().hasAll([

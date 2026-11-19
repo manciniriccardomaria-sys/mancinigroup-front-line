@@ -24,7 +24,7 @@ export default function PilotWinbackSummary({ today, sourceCodes, onOpenCalendar
     <aside aria-label="Riepilogo Winback" className="w-full rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1.5 lg:w-[260px] lg:shrink-0">
       <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-[#003781]">
         <PhoneCall size={13} aria-hidden="true" />
-        Winback · Fonte {sourceCodes.join(', ')}
+        Winback · {sourceCodes.length === 1 ? 'Fonte' : 'Fonti'} {sourceCodes.join(', ')}
       </h3>
       <div className="grid grid-cols-3 gap-1">
         {WINBACK_CALENDAR_GROUPS.map(({ id, label }) => (

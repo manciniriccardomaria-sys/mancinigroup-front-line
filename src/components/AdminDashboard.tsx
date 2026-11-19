@@ -11,6 +11,7 @@ import {
 import {
   ReportCategory,
   getReportCategoryIcon,
+  groupReportCategories,
   useReportCategories,
 } from '../reportCatalog';
 import { 
@@ -65,6 +66,7 @@ import AdminDailyObjectives from './AdminDailyObjectives';
 import AdminReportCategories from './AdminReportCategories';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
 import { isNegotiationsPilot } from '../negotiationModel';
+import { PILOT_REPORT_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
 
 type Tab =
   | 'analisi'
@@ -97,7 +99,14 @@ export default function AdminDashboard() {
   ]);
   const [selectedCategoriesStorico, setSelectedCategoriesStorico] = useState<CategoryId[]>(['incassi']);
   const employeeSelectionInitializedRef = useRef(false);
-  const { categories, sections, loading: categoriesLoading } = useReportCategories();
+  const { categories: storedCategories, loading: categoriesLoading } = useReportCategories();
+  const categories = useMemo(() => {
+    const storedIds = new Set(storedCategories.map(category => category.id));
+    return [...storedCategories, ...PILOT_REPORT_CATEGORIES
+      .filter(category => !storedIds.has(category.id))
+      .map(category => ({ ...category, label: pilotActivityLabel(category) }))];
+  }, [storedCategories]);
+  const sections = useMemo(() => groupReportCategories(categories), [categories]);
 
   useEffect(() => {
     if (categories.length === 0) return;
@@ -1041,7 +1050,7 @@ export default function AdminDashboard() {
 
           {selectedTab === 'importazioni' && <div className="space-y-5"><CustomerRegistryPanel /><AdminImportPanel /></div>}
 
-          {selectedTab === 'rendicontazione' && <AdminReportCategories categories={categories} />}
+          {selectedTab === 'rendicontazione' && <AdminReportCategories categories={storedCategories} />}
 
           {selectedTab === 'obiettivi' && <AdminDailyObjectives />}
 

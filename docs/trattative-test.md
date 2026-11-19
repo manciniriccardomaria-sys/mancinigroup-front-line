@@ -1,8 +1,7 @@
-# Trattative: prova sul collaboratore Riccardo
+# Trattative e rendicontazione giornaliera
 
-Il flusso è attivo esclusivamente per `manciniriccardo9@gmail.com`, come
-collaboratore di test della fonte `098 · MANCINI RICCARDO MARIA`.
-La password non è conservata nel repository.
+Il flusso è attivo per Marina Bartoli, che usa le fonti `005` e `043`, e
+per il profilo di test Riccardo collaboratore, che usa la fonte `098`.
 
 ## Attività collegate
 
@@ -22,11 +21,12 @@ contatori. Le categorie sono selezionate per ID, anche se un amministratore
 ne modifica l'etichetta. Per aggiungere altre proposte occorre aggiornare
 `PROPOSAL_CATEGORY_IDS` e la corrispondente validazione in `firestore.rules`.
 
-## Rendicontazione giornaliera del profilo di test
+## Rendicontazione giornaliera
 
-Il catalogo locale `pilotReportCatalog.ts` mostra esclusivamente a Riccardo
-quattro riquadri: **Ricezione, Promozione, Emissione, Terzi**. Il catalogo
-condiviso `report_categories` e i report degli altri operatori non cambiano.
+Il catalogo `pilotReportCatalog.ts` mostra quattro riquadri: **Ricezione,
+Promozione, Emissione, Terzi**. I report di Marina continuano a usare
+`daily_reports`, con le giornate già rendicontate e la visibilità nelle
+analisi amministrative.
 Le voci Retail vengono sostituite da ULTRA Salute, SMEG, ULTRA Casa e ULTRA
 Impresa, con contatori distinti per proposta, emissione e preventivo per terzi.
 Vitariv/consegne, ScegliAllianz/consegne e Recensioni sono in Promozione.
@@ -51,26 +51,28 @@ duplica la consegna. Le consegne non compaiono come trattative aperte.
 
 ### Winback nel report giornaliero
 
-I tre contatori leggono le schede del calendario della fonte 098.
+I tre contatori leggono le schede del calendario delle fonti del profilo.
 **Da effettuare** indica le chiamate in programma oggi, **Arretrate** quelle
 ancora da effettuare con data precedente, **Fatte** quelle con un esito
 registrato oggi. Un tentativo con esito non raggiungibile può risultare tra
 le chiamate fatte e rimanere da effettuare o arretrato. Ogni contatore apre
-il calendario in sola lettura, su oggi e con il filtro selezionato.
+il calendario su oggi, con il filtro selezionato. Marina può lavorare le
+chiamate dal calendario con i suoi permessi operativi.
 
-Le chiamate già salvate nel registro di test `pilot_winback_calls` sono
-consultabili nello storico del report per la giornata selezionata.
+Riccardo può consultare nello storico del report le chiamate già salvate nel
+registro `pilot_winback_calls` per la giornata selezionata.
 
 ## Funzionamento
 
 Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
-Proposta e data italiana sono precompilate e non modificabili. La fonte è
-quella assegnata al collaboratore. Annullare non registra alcuna attività.
+Proposta e data italiana sono precompilate. Marina sceglie tra le proprie
+fonti `005` e `043`. Annullare chiude la scheda senza registrare l’attività.
 
-Il codice fiscale cerca prima le anagrafiche già inserite nel test, poi
+Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento
-identificato dal CF. Solo se il cliente non è presente usa gli archivi
-`new_clients`, `call_tasks` ed `expiration_records`, senza modificarli.
+identificato dal CF. Se il cliente non è disponibile, la ricerca consulta
+gli archivi `new_clients`, `call_tasks` ed `expiration_records`. Per Marina,
+la ricerca negli archivi e nell’anagrafica è limitata alle sue fonti.
 Gli import dell'anagrafica generale separano `Cognome Nome` verificando le
 lettere del CF, anche per i cognomi composti. Le separazioni incerte vengono
 segnalate e restano correggibili. I CF associati a dati discordanti sono
@@ -103,18 +105,13 @@ Il tab Trattative permette di filtrare cliente/CF, coppia codice e nome fonte,
 proposta, stato, intervallo della proposta, data di nascita e giorni trascorsi.
 I giorni sono calcolati per calendario e aggiornati anche a pagina aperta.
 
-## Separazione dai dati operativi
+## Accesso ai dati
 
-Le tre raccolte del test sono:
-
-- `negotiation_test_reports`
-- `negotiation_test_deals`
-- `negotiation_test_customers`
-
-Le regole consentono l'accesso solo al proprietario nell'account di test e
-validano fonte, categoria e dati richiesti. Il profilo è escluso dalle
-analisi amministrative e accede al calendario della propria fonte in sola
-lettura dai contatori Winback.
+`negotiation_test_deals`, `negotiation_test_customers` e
+`negotiation_test_deliveries` conservano i dati per profilo. Le regole
+verificano proprietario, fonte, categoria e dati richiesti. I report di
+Riccardo restano nella raccolta `negotiation_test_reports`, separata dalle
+analisi amministrative. Il calendario di Riccardo è in sola lettura.
 
 Il frontend e le regole Firestore devono essere pubblicati entrambi;
 il deploy Pages non aggiorna le regole. Usare il database indicato in

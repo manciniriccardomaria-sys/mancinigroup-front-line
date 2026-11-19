@@ -5,7 +5,7 @@ import { getAuthorizedEmployee } from '../constants';
 import { auth } from '../firebase';
 import { SOURCE_DIRECTORY } from '../sourceDirectory';
 import type { ReportCategory } from '../reportCatalog';
-import { isValidFiscalCode, normalizeFiscalCode, validateCustomer, type CustomerDetails } from '../negotiationModel';
+import { isNegotiationsPilot, isValidFiscalCode, normalizeFiscalCode, validateCustomer, type CustomerDetails } from '../negotiationModel';
 import { createNegotiationId, findNegotiationCustomer, getNegotiationErrorMessage, saveNegotiation, saveVitarivDelivery } from '../negotiations';
 
 const EMPTY_CUSTOMER: CustomerDetails = { fiscalCode: '', firstName: '', lastName: '', birthDate: '' };
@@ -91,7 +91,7 @@ export default function ProposalDialog({ category, onClose }: { category: Report
       <form onSubmit={submit}>
         <div className="flex justify-between items-start gap-4 px-6 py-5 border-b border-slate-200">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Account di test · {isDelivery ? 'Consegna Vitariv' : 'Nuova proposta'}</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{isNegotiationsPilot(auth.currentUser?.email) && 'Account di test · '}{isDelivery ? 'Consegna Vitariv' : 'Nuova proposta'}</p>
             <h2 id="proposal-dialog-title" className="text-xl font-bold text-slate-800 mt-1">Dati del cliente</h2>
             <p className="text-sm text-slate-500 mt-1">{isDelivery ? 'Compila l’anagrafica e salva per registrare la consegna.' : 'Salva la trattativa per registrare l’attività.'}</p>
           </div>

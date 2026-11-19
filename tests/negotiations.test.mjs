@@ -8,10 +8,16 @@ async function loadModule(entryPoint, plugins = []) {
 }
 const model = await loadModule('src/negotiationModel.ts');
 const customer = { fiscalCode: 'RSSMRA80A01H501U', firstName: 'Mario', lastName: 'Rossi', birthDate: '1980-01-01' };
+const marinaEmail = 'b.marinamancinigroup@gmail.com';
 
-test('only the designated test account enables proposals', () => {
+test('Marina and Riccardo have negotiations access and use their existing report collections', () => {
   assert.equal(model.isNegotiationsPilot(' MANCINIRICCARDO9@gmail.com '), true);
-  for (const email of ['manciniriccardomaria@gmail.com', 'b.marinamancinigroup@gmail.com', null, '']) assert.equal(model.isNegotiationsPilot(email), false);
+  assert.equal(model.isNegotiationsPilot(marinaEmail), false);
+  assert.equal(model.hasNegotiationsAccess(` ${marinaEmail.toUpperCase()} `), true);
+  assert.equal(model.hasNegotiationsAccess(model.NEGOTIATIONS_PILOT_EMAIL), true);
+  assert.equal(model.getEmployeeReportCollection(marinaEmail), 'daily_reports');
+  assert.equal(model.getEmployeeReportCollection(model.NEGOTIATIONS_PILOT_EMAIL), 'negotiation_test_reports');
+  for (const email of ['manciniriccardomaria@gmail.com', 'isabella.cappelluti@gmail.com', null, '']) assert.equal(model.hasNegotiationsAccess(email), false);
   for (const category of ['prevMotorTerzi', 'prevRetailTerzi', 'incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
 });
 
@@ -60,11 +66,16 @@ const firestoreMock = {
       export const serverTimestamp = () => 'server-time';
       const key = ref => ref.name + '/' + ref.id;
       const snap = value => ({ exists: () => value !== undefined, data: () => value });
-      export const getDoc = async ref => snap(globalThis.negotiationStore[key(ref)]);
+      export const getDoc = async ref => {
+        if (ref.name === 'customer_registry' && globalThis.denyRegistryLookup) throw { code: 'permission-denied' };
+        return snap(globalThis.negotiationStore[key(ref)]);
+      };
       export const getDocs = async q => {
         globalThis.negotiationReads.push(q);
         if (globalThis.negotiationReadFailures?.includes(q.name)) throw new Error('archive unavailable');
-        return { docs: (globalThis.importedCustomers[q.name] || []).map(data => ({ data: () => data })) };
+        const sourceCodes = q.filters.find(([field, operator]) => field === 'sourceCode' && operator === 'in')?.[2];
+        const records = (globalThis.importedCustomers[q.name] || []).filter(record => !sourceCodes || sourceCodes.includes(record.sourceCode));
+        return { docs: records.map(data => ({ data: () => data })) };
       };
       export const onSnapshot = () => () => {};
       export const updateDoc = async (ref, data) => globalThis.negotiationWrites.push({ ref, data });
@@ -88,6 +99,7 @@ function reset() {
   globalThis.importedCustomers = {};
   globalThis.negotiationReadFailures = [];
   globalThis.failNegotiationCommit = false;
+  globalThis.denyRegistryLookup = false;
 }
 const proposal = () => ({ id: 'pilot_deal-1', customer, categoryId: 'smeg', proposalLabel: 'SMEG', proposalDate: getItalyDate(), sourceCode: '098', sourceName: 'MANCINI RICCARDO MARIA' });
 
@@ -109,27 +121,60 @@ test('a failed commit leaves no customer, deal or report increments', async () =
   assert.deepEqual(globalThis.negotiationWrites, []);
 });
 
+test('Marina can use both assigned sources and keeps counters in the existing daily report', async () => {
+  reset();
+  globalThis.negotiationUser = { uid: 'marina', email: marinaEmail };
+  const reportPath = 'daily_reports/marina_' + getItalyDate();
+  globalThis.negotiationStore[reportPath] = { emissSe: 3, values: { prevRetailSe: 2, smeg: 4 } };
+  const marinaProposal = { ...proposal(), id: 'marina_deal-1', sourceCode: '005', sourceName: 'BARTOLI MARINA ANGELA' };
+  await service.saveNegotiation(marinaProposal);
+  await service.saveNegotiation(marinaProposal);
+  await service.saveVitarivDelivery({ ...marinaProposal, id: 'marina_delivery-1', sourceCode: '043', categoryId: 'vitarivConsegna' });
+  await service.adjustDetailedReportCount('emissMotorSe', 1);
+  assert.equal(globalThis.negotiationStore['negotiation_test_deals/marina_deal-1'].ownerName, 'Marina Bartoli');
+  assert.equal(globalThis.negotiationStore['negotiation_test_deliveries/marina_delivery-1'].sourceCode, '043');
+  assert.deepEqual(globalThis.negotiationStore[reportPath].values, { prevRetailSe: 2, smeg: 5, vitarivConsegna: 1, emissMotorSe: 4 });
+  assert.equal(globalThis.negotiationWrites.some(write => write.ref.name === 'negotiation_test_reports'), false);
+  await assert.rejects(service.saveNegotiation({ ...marinaProposal, sourceCode: '098', sourceName: 'MANCINI RICCARDO MARIA' }), /fonte assegnata/);
+});
+
+test('Marina falls back to her sources if the central lookup is denied', async () => {
+  reset();
+  globalThis.negotiationUser = { uid: 'marina', email: marinaEmail };
+  globalThis.denyRegistryLookup = true;
+  globalThis.importedCustomers = {
+    call_tasks: [
+      { ...customer, firstName: 'Altro nome', sourceCode: '098' },
+      { ...customer, sourceCode: '043' },
+    ],
+  };
+  assert.equal((await service.findNegotiationCustomer(customer.fiscalCode)).firstName, 'Mario');
+  for (const read of globalThis.negotiationReads) assert.deepEqual(read.filters[1], ['sourceCode', 'in', ['005', '043']]);
+  globalThis.importedCustomers.call_tasks.pop();
+  assert.equal(await service.findNegotiationCustomer(customer.fiscalCode), null);
+});
+
 test('other pilot counters preserve proposal counts and never become negative', async () => {
   reset();
   await service.saveNegotiation(proposal());
-  await service.adjustPilotReportCount('incassi', 1);
+  await service.adjustDetailedReportCount('incassi', 1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 1 });
-  await service.adjustPilotReportCount('incassi', -1);
-  await service.adjustPilotReportCount('incassi', -1);
+  await service.adjustDetailedReportCount('incassi', -1);
+  await service.adjustDetailedReportCount('incassi', -1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
-  await service.adjustPilotReportCount('emissProtection', 1);
+  await service.adjustDetailedReportCount('emissProtection', 1);
   assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0, emissProtection: 1 });
-  await assert.rejects(service.adjustPilotReportCount('smeg', -1));
-  for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustPilotReportCount(category, 1));
+  await assert.rejects(service.adjustDetailedReportCount('smeg', -1));
+  for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustDetailedReportCount(category, 1));
 });
 
 test('third-party Motor and Retail claims have independent counters from reception claims', async () => {
   reset();
   const reportPath = 'negotiation_test_reports/pilot_' + getItalyDate();
   globalThis.negotiationStore[reportPath] = { values: { sinistriMotor: 2, sinistriRetail: 3 } };
-  await service.adjustPilotReportCount('sinistriMotorTerzi', 1);
-  await service.adjustPilotReportCount('sinistriRetailTerzi', 1);
-  await service.adjustPilotReportCount('sinistriRetailTerzi', 1);
+  await service.adjustDetailedReportCount('sinistriMotorTerzi', 1);
+  await service.adjustDetailedReportCount('sinistriRetailTerzi', 1);
+  await service.adjustDetailedReportCount('sinistriRetailTerzi', 1);
   assert.deepEqual(globalThis.negotiationStore[reportPath].values, {
     sinistriMotor: 2, sinistriRetail: 3, sinistriMotorTerzi: 1, sinistriRetailTerzi: 2,
   });

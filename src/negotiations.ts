@@ -9,34 +9,43 @@ import { SOURCE_DIRECTORY } from './sourceDirectory';
 import { CUSTOMER_REGISTRY_COLLECTION } from './customerRegistryModel';
 import { PILOT_REPORT_CATEGORIES } from './pilotReportCatalog';
 import {
-  customerMatchFromRecord, isCustomerActivityCategory, isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
+  customerMatchFromRecord, getEmployeeReportCollection, hasNegotiationsAccess, isCustomerActivityCategory,
+  isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
   NEGOTIATIONS_COLLECTION, NEGOTIATION_CUSTOMERS_COLLECTION, normalizeFiscalCode,
-  PILOT_REPORTS_COLLECTION, VITARIV_DELIVERIES_COLLECTION, validateCustomer,
+  VITARIV_DELIVERIES_COLLECTION, validateCustomer,
   type CustomerDetails, type CustomerMatch, type Negotiation, type NegotiationStatus,
 } from './negotiationModel';
 
-function requirePilot() {
+function requireNegotiationsUser() {
   const user = auth.currentUser;
-  if (!user || !isNegotiationsPilot(user.email)) throw new Error('Funzione riservata all’account di test.');
-  return user;
+  const employee = getAuthorizedEmployee(user?.email);
+  if (!user || !employee || !hasNegotiationsAccess(user.email)) throw new Error('Funzione riservata ai profili abilitati.');
+  return { user, employee };
 }
 
 export function createNegotiationId(): string {
-  const user = requirePilot();
+  const { user } = requireNegotiationsUser();
   return `${user.uid}_${doc(collection(db, NEGOTIATIONS_COLLECTION)).id}`;
 }
 
 export async function findNegotiationCustomer(fiscalCode: string): Promise<CustomerMatch | null> {
-  const user = requirePilot();
+  const { user, employee } = requireNegotiationsUser();
   const normalized = normalizeFiscalCode(fiscalCode);
+  const isPilot = isNegotiationsPilot(user.email);
   if (!isValidFiscalCode(normalized)) return null;
   const saved = await getDoc(doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${normalized}`));
   if (saved.exists()) return customerMatchFromRecord(saved.data());
-  const registry = await getDoc(doc(db, CUSTOMER_REGISTRY_COLLECTION, normalized));
-  if (registry.exists()) return customerMatchFromRecord(registry.data());
+  try {
+    const registry = await getDoc(doc(db, CUSTOMER_REGISTRY_COLLECTION, normalized));
+    if (registry.exists()) return customerMatchFromRecord(registry.data());
+  } catch (error) {
+    // A source-scoped registry lookup can be denied for an unknown or out-of-source CF.
+    if (isPilot || errorCode(error) !== 'permission-denied') throw error;
+  }
 
+  const sourceFilters = isPilot ? [] : [where('sourceCode', 'in', employee.sourceCodes)];
   const snapshots = await Promise.allSettled(['new_clients', 'call_tasks', 'expiration_records'].map(name =>
-    getDocs(query(collection(db, name), where('fiscalCode', '==', normalized), limit(10)))
+    getDocs(query(collection(db, name), where('fiscalCode', '==', normalized), ...sourceFilters, limit(10)))
   ));
   const matches = snapshots.flatMap(result => result.status === 'fulfilled' ? result.value.docs.map(item => customerMatchFromRecord(item.data())) : []);
   if (matches.length === 0) {
@@ -63,20 +72,17 @@ type CustomerActivityInput = {
 };
 
 export async function saveNegotiation(input: CustomerActivityInput): Promise<void> {
-  requirePilot();
   if (!isProposalCategory(input.categoryId)) throw new Error('Questa attività non prevede una proposta.');
   await saveCustomerActivity(input, false);
 }
 
 export async function saveVitarivDelivery(input: CustomerActivityInput): Promise<void> {
-  requirePilot();
   if (input.categoryId !== 'vitarivConsegna') throw new Error('Seleziona la consegna Vitariv.');
   await saveCustomerActivity(input, true);
 }
 
 async function saveCustomerActivity(input: CustomerActivityInput, delivery: boolean): Promise<void> {
-  const user = requirePilot();
-  const employee = getAuthorizedEmployee(user.email);
+  const { user, employee } = requireNegotiationsUser();
   const today = getItalyDate();
   const customer = {
     ...input.customer,
@@ -87,11 +93,11 @@ async function saveCustomerActivity(input: CustomerActivityInput, delivery: bool
   const validation = validateCustomer(customer, today);
   if (validation) throw new Error(validation);
   if (input.proposalDate !== today) throw new Error('È cambiata la giornata. Riapri la scheda cliente per aggiornare la data.');
-  if (!employee?.sourceCodes.includes(input.sourceCode) || !SOURCE_DIRECTORY.some(source => source.code === input.sourceCode && source.name === input.sourceName)) {
+  if (!employee.sourceCodes.includes(input.sourceCode) || !SOURCE_DIRECTORY.some(source => source.code === input.sourceCode && source.name === input.sourceName)) {
     throw new Error('Seleziona una fonte assegnata al tuo account.');
   }
   const dealRef = doc(db, delivery ? VITARIV_DELIVERIES_COLLECTION : NEGOTIATIONS_COLLECTION, input.id);
-  const reportRef = doc(db, PILOT_REPORTS_COLLECTION, `${user.uid}_${today}`);
+  const reportRef = doc(db, getEmployeeReportCollection(user.email), `${user.uid}_${today}`);
   const customerRef = doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${customer.fiscalCode}`);
 
   // A single commit links the activity, customer and counter. A retry uses the same ID.
@@ -127,25 +133,25 @@ async function saveCustomerActivity(input: CustomerActivityInput, delivery: bool
 }
 
 export function subscribeToNegotiations(onData: (items: Negotiation[]) => void, onError: (error: unknown) => void) {
-  const user = requirePilot();
+  const { user } = requireNegotiationsUser();
   return onSnapshot(query(collection(db, NEGOTIATIONS_COLLECTION), where('ownerUid', '==', user.uid)), snapshot => {
     onData(snapshot.docs.map(item => ({ ...item.data(), id: item.id } as Negotiation)));
   }, onError);
 }
 
-export async function adjustPilotReportCount(categoryId: string, delta: number): Promise<void> {
-  const user = requirePilot();
+export async function adjustDetailedReportCount(categoryId: string, delta: number): Promise<void> {
+  const { user, employee } = requireNegotiationsUser();
   if (isCustomerActivityCategory(categoryId) || !PILOT_REPORT_CATEGORIES.some(category => category.id === categoryId) || ![1, -1].includes(delta)) {
     throw new Error('Voce non modificabile manualmente. Registra l’attività tramite la scheda cliente.');
   }
   const today = getItalyDate();
-  const reportRef = doc(db, PILOT_REPORTS_COLLECTION, `${user.uid}_${today}`);
+  const reportRef = doc(db, getEmployeeReportCollection(user.email), `${user.uid}_${today}`);
   await runTransaction(db, async transaction => {
     const snapshot = await transaction.get(reportRef);
     const report = snapshot.exists() ? snapshot.data() as Partial<DailyReport> : {};
     transaction.set(reportRef, {
       userId: user.uid,
-      userName: getAuthorizedEmployee(user.email)!.name,
+      userName: employee.name,
       date: today,
       values: { ...(report.values || {}), [categoryId]: Math.max(0, getReportCategoryValue(report, categoryId) + delta) },
     }, { merge: true });
@@ -153,13 +159,17 @@ export async function adjustPilotReportCount(categoryId: string, delta: number):
 }
 
 export async function setNegotiationStatus(id: string, status: NegotiationStatus): Promise<void> {
-  requirePilot();
+  requireNegotiationsUser();
   await updateDoc(doc(db, NEGOTIATIONS_COLLECTION, id), { status, updatedAt: serverTimestamp() });
 }
 
+function errorCode(error: unknown): string {
+  return typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+}
+
 export function getNegotiationErrorMessage(error: unknown): string {
-  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-  if (code.includes('permission-denied')) return 'Accesso ai dati di test negato. Verifica che le regole Firestore aggiornate siano pubblicate sul database dell’app.';
+  const code = errorCode(error);
+  if (code.includes('permission-denied')) return 'Accesso ai dati non consentito per questo profilo.';
   if (code.includes('unavailable')) return 'Database non raggiungibile. Controlla la connessione e riprova.';
   return error instanceof Error ? error.message : 'Operazione non riuscita. Riprova.';
 }
