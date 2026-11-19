@@ -65,8 +65,9 @@ registro `pilot_winback_calls` per la giornata selezionata.
 ## Funzionamento
 
 Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
-Proposta e data italiana sono precompilate. Marina sceglie tra le proprie
-fonti `005` e `043`. Annullare chiude la scheda senza registrare l’attività.
+Proposta e data italiana sono precompilate. Nelle trattative di Marina è
+preselezionata la fonte `005`. La fonte `043` è disponibile nel menu.
+Annullare chiude la scheda senza registrare l’attività.
 
 Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento

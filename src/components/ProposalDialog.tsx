@@ -19,8 +19,11 @@ export default function ProposalDialog({ category, onClose }: { category: Report
   const [id] = useState(createNegotiationId);
   const [proposalDate] = useState(getItalyDate);
   const [customer, setCustomer] = useState<CustomerDetails>(EMPTY_CUSTOMER);
-  const sources = SOURCE_DIRECTORY.filter(source => getAuthorizedEmployee(auth.currentUser?.email)?.sourceCodes.includes(source.code));
-  const [sourceKey, setSourceKey] = useState(sources.length === 1 ? `${sources[0].code}|${sources[0].name}` : '');
+  const employee = getAuthorizedEmployee(auth.currentUser?.email);
+  const sources = SOURCE_DIRECTORY.filter(source => employee?.sourceCodes.includes(source.code));
+  const defaultSourceCode = isDelivery ? undefined : employee?.defaultNegotiationSourceCode;
+  const defaultSource = sources.length === 1 ? sources[0] : sources.find(source => source.code === defaultSourceCode);
+  const [sourceKey, setSourceKey] = useState(defaultSource ? `${defaultSource.code}|${defaultSource.name}` : '');
   const [lookupStatus, setLookupStatus] = useState<'idle' | 'searching' | 'found' | 'missing' | 'error'>('idle');
   const [lookupNote, setLookupNote] = useState('');
   const [lookupAttempt, setLookupAttempt] = useState(0);
