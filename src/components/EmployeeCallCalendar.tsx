@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDays,
   addMonths,
@@ -22,8 +22,10 @@ import {
   Clock3,
   HandHelping,
   Phone,
+  PhoneCall,
   Search,
   UserCheck,
+  UserX,
   X,
 } from 'lucide-react';
 import {
@@ -67,6 +69,13 @@ import { matchesWinbackCalendarGroup, WINBACK_CALENDAR_GROUPS, type WinbackCalen
 
 type SourceMode = 'mine' | 'help';
 
+const CLIENT_LISTS = [
+  { id: 'recovered', title: 'Clienti ripresi', Icon: CheckCircle2, color: 'text-emerald-700', border: 'border-emerald-200', background: 'bg-emerald-50', hover: 'hover:bg-emerald-100' },
+  { id: 'lost', title: 'Clienti persi', Icon: UserX, color: 'text-red-700', border: 'border-red-200', background: 'bg-red-50', hover: 'hover:bg-red-100' },
+  { id: 'inProgress', title: 'Trattative in corso', Icon: PhoneCall, color: 'text-orange-800', border: 'border-orange-200', background: 'bg-orange-50', hover: 'hover:bg-orange-100' },
+] as const;
+type ClientList = typeof CLIENT_LISTS[number];
+
 export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = false }: {
   initialWinbackGroup?: WinbackCalendarGroup;
   readOnly?: boolean;
@@ -86,7 +95,8 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
   const [savingTaskId, setSavingTaskId] = useState('');
   const [callbackTaskId, setCallbackTaskId] = useState('');
   const [callbackDate, setCallbackDate] = useState('');
-  const [recoveredClientsOpen, setRecoveredClientsOpen] = useState(false);
+  const [openClientList, setOpenClientList] = useState<ClientList | null>(null);
+  const [calendarTargetId, setCalendarTargetId] = useState('');
   const [error, setError] = useState('');
 
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
@@ -274,8 +284,8 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
     getTaskEffectiveDate(task) < today && operationalTaskIds.has(task.id) && isTaskActionable(task, today)
   ).length;
 
-  const recoveredTasks = useMemo(
-    () => modeTasks
+  const clientLists = useMemo(() => ({
+    recovered: modeTasks
       .filter(task => task.status === 'ripreso' &&
         (task.category === 'winback' || isTaskWithinWorkingPeriod(task, today)))
       .sort((first, second) => {
@@ -283,19 +293,25 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
         if (dateComparison !== 0) return dateComparison;
         return first.clientName.localeCompare(second.clientName, 'it');
       }),
-    [modeTasks, today]
-  );
+    lost: modeTasks.filter(task => task.status === 'cliente_perso'),
+    inProgress: modeTasks.filter(task => task.status === 'chiamato' || task.status === 'da_richiamare'),
+  }), [modeTasks, today]);
 
   useEffect(() => {
-    if (!recoveredClientsOpen) return undefined;
+    if (!calendarTargetId) return;
+    document.getElementById(`calendar-call-${calendarTargetId}`)?.focus();
+    setCalendarTargetId('');
+  }, [calendarTargetId]);
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setRecoveredClientsOpen(false);
-    };
-
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [recoveredClientsOpen]);
+  const openCallInCalendar = (task: CallTask, date: string) => {
+    setSelectedDate(date);
+    setVisibleMonth(startOfMonth(parseISO(date)));
+    setSearch('');
+    setSelectedCategories([task.category === 'campagna' && task.campaignId ? `campaign:${task.campaignId}` : task.category]);
+    setWinbackGroup(undefined);
+    setOpenClientList(null);
+    setCalendarTargetId(task.id);
+  };
 
   const claimTask = async (task: CallTask) => {
     setSavingTaskId(task.id);
@@ -576,24 +592,24 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
               </div>
             )}
 
-            {recoveredTasks.length > 0 && (
-              <button
+            {CLIENT_LISTS.map(list => {
+              const { id, title, Icon, color, border, background, hover } = list;
+              const count = clientLists[id].length;
+              if (id === 'recovered' && count === 0) return null;
+
+              return <button
+                key={id}
                 type="button"
-                onClick={() => setRecoveredClientsOpen(true)}
-                className="mt-3 w-full bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2 text-left hover:bg-emerald-100 transition-colors"
+                aria-haspopup="dialog"
+                onClick={() => setOpenClientList(list)}
+                className={`mt-3 w-full border rounded-lg p-3 flex items-center gap-2 text-left transition-colors ${color} ${border} ${background} ${hover}`}
               >
-                <CheckCircle2 size={17} className="text-emerald-600 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-emerald-700">
-                    {recoveredTasks.length} {recoveredTasks.length === 1 ? 'cliente ripreso' : 'clienti ripresi'}
-                  </span>
-                  <span className="block text-[11px] text-emerald-600">
-                    Clicca per vedere la lista
-                  </span>
-                </span>
-                <ChevronRight size={17} className="text-emerald-600 shrink-0" />
-              </button>
-            )}
+                <Icon size={17} className="shrink-0" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold">{title}</span>
+                <span className="text-sm font-bold tabular-nums">{count}</span>
+                <ChevronRight size={17} className="shrink-0" aria-hidden="true" />
+              </button>;
+            })}
           </div>
 
           <div className="p-4 min-w-0">
@@ -667,7 +683,9 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
                 return (
                   <article
                     key={task.id}
-                    className={`border rounded-lg p-4 ${
+                    id={`calendar-call-${task.id}`}
+                    tabIndex={-1}
+                    className={`border rounded-lg p-4 focus:outline-2 focus:outline-[#003781] ${
                       isCalled
                         ? 'border-emerald-200 bg-emerald-50/60'
                         : isOverdue
@@ -850,108 +868,124 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
         </div>
       </section>
 
-      {recoveredClientsOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/45 p-4 flex items-center justify-center"
-          role="presentation"
-          onMouseDown={event => {
-            if (event.target === event.currentTarget) setRecoveredClientsOpen(false);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="recovered-clients-title"
-            className="w-full max-w-3xl max-h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
+      {openClientList && <CalendarClientList
+        list={openClientList}
+        tasks={clientLists[openClientList.id]}
+        onClose={() => setOpenClientList(null)}
+        onOpenCall={openCallInCalendar}
+      />}
+    </div>
+  );
+}
+
+function CalendarClientList({ list, tasks, onClose, onOpenCall }: {
+  list: ClientList;
+  tasks: CallTask[];
+  onClose: () => void;
+  onOpenCall: (task: CallTask, date: string) => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const { id, title, Icon, color, border, background } = list;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+
+  const closeList = () => {
+    dialogRef.current?.close();
+    onClose();
+  };
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="calendar-client-list-title"
+      onCancel={event => { event.preventDefault(); closeList(); }}
+      onClick={event => { if (event.target === event.currentTarget) closeList(); }}
+      className="m-auto w-[calc(100%_-_2rem)] max-w-3xl max-h-[85dvh] rounded-xl p-0 bg-white shadow-2xl backdrop:bg-slate-950/45"
+    >
+      <div className="flex max-h-[85dvh] flex-col">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 p-4 sm:p-5">
+          <h3 id="calendar-client-list-title" className="flex items-center gap-2 font-bold text-slate-800">
+            <Icon size={20} className={color} aria-hidden="true" />
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={closeList}
+            className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"
+            aria-label="Chiudi elenco"
           >
-            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-start justify-between gap-4">
-              <div>
-                <h3
-                  id="recovered-clients-title"
-                  className="font-bold text-slate-800 flex items-center gap-2"
-                >
-                  <CheckCircle2 size={20} className="text-emerald-600" />
-                  Clienti ripresi
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  I clienti Winback restano visibili anche dopo la data anniversario.
-                  Le altre chiamate restano visibili fino alla rispettiva scadenza.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRecoveredClientsOpen(false)}
-                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"
-                aria-label="Chiudi elenco clienti ripresi"
-              >
-                <X size={19} />
-              </button>
-            </div>
+            <X size={19} aria-hidden="true" />
+          </button>
+        </div>
 
-            <div className="p-4 sm:p-5 overflow-y-auto space-y-3">
-              {recoveredTasks.map(task => (
-                <article
-                  key={task.id}
-                  className="border border-emerald-200 bg-emerald-50/60 rounded-lg p-4"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-bold text-slate-800">{task.clientName}</h4>
-                        <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold">
-                          Ripreso
-                        </span>
-                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">
-                          {getTaskCategoryLabel(task)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                        <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
-                        {task.policyNumber && (
-                          <span><strong>Polizza:</strong> {task.policyNumber}</span>
-                        )}
-                        <span>
-                          <strong>{task.category === 'winback' ? 'Anniversario:' : 'Scadenza:'}</strong> {formatDisplayDate(task.eventDate)}
-                        </span>
-                      </div>
-                      {task.category === 'winback' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDate(task.dueDate);
-                            setVisibleMonth(startOfMonth(parseISO(task.dueDate)));
-                            setSearch('');
-                            setSelectedCategories(['winback']);
-                            setRecoveredClientsOpen(false);
-                          }}
-                          className="mt-3 text-sm font-bold text-[#003781] underline"
-                        >
-                          Apri nel calendario
-                        </button>
-                      )}
-                    </div>
+        <div className="space-y-3 overflow-y-auto p-4 sm:p-5">
+          {tasks.length === 0 && (
+            <p className="py-6 text-center text-sm text-slate-500">Nessun cliente in questo elenco.</p>
+          )}
+          {tasks.map(task => {
+            const lastActionDate = getTaskLastActionDate(task);
+            const callbackDate = task.status === 'da_richiamare' ? task.callbackDate : '';
+            const calendarDate = id === 'recovered' ? task.dueDate : callbackDate || lastActionDate || task.dueDate;
+            const canOpen = Boolean(calendarDate) && (id !== 'recovered' || task.category === 'winback');
+            const status = id === 'recovered' ? 'Ripreso' : CALL_STATUSES.find(option => option.id === task.status)?.label;
 
-                    {task.phone ? (
-                      <a
-                        href={`tel:${task.phone.replace(/\s+/g, '')}`}
-                        className="inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-bold shrink-0"
-                      >
-                        <Phone size={16} />
-                        {task.phone}
-                      </a>
-                    ) : (
-                      <span className="text-xs text-red-600 font-semibold shrink-0">
-                        Telefono assente
+            return (
+              <article key={task.id} className={`rounded-lg border p-4 ${border} ${background}`}>
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-slate-800">{task.clientName}</h4>
+                      <span className={`rounded bg-white px-2 py-1 text-[10px] font-bold ${color}`}>{status}</span>
+                      <span className="rounded bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+                        {getTaskCategoryLabel(task)}
                       </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                      <span><strong>Fonte:</strong> {task.sourceCode} · {task.sourceName}</span>
+                      {task.policyNumber && <span><strong>Polizza:</strong> {task.policyNumber}</span>}
+                      {id === 'recovered' && <span>
+                        <strong>{task.category === 'winback' ? 'Anniversario:' : 'Scadenza:'}</strong> {formatDisplayDate(task.eventDate)}
+                      </span>}
+                      {id !== 'recovered' && calendarDate && <span>
+                        <strong>{callbackDate ? 'Richiamo:' : lastActionDate ? 'Ultima azione:' : 'Data prevista:'}</strong> {formatDisplayDate(calendarDate)}
+                      </span>}
+                    </div>
+                    {canOpen && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          dialogRef.current?.close();
+                          onOpenCall(task, calendarDate);
+                        }}
+                        className="mt-3 text-sm font-bold text-[#003781] underline"
+                      >
+                        Apri nel calendario
+                      </button>
                     )}
                   </div>
-                </article>
-              ))}
-            </div>
-          </section>
+
+                  {task.phone ? (
+                    <a
+                      href={`tel:${task.phone.replace(/\s+/g, '')}`}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#003781] px-3 py-2 text-sm font-bold text-white"
+                    >
+                      <Phone size={16} aria-hidden="true" />
+                      {task.phone}
+                    </a>
+                  ) : (
+                    <span className="shrink-0 text-xs font-semibold text-red-600">Telefono assente</span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
-      )}
-    </div>
+      </div>
+    </dialog>
   );
 }
 
