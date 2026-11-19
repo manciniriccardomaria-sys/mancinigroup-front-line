@@ -43,10 +43,6 @@ service cloud.firestore {
       return isApprovedAdminEmail();
     }
 
-    function isNegotiationsPilot() {
-      return isAuthenticated() && request.auth.token.email == 'manciniriccardo9@gmail.com';
-    }
-
     function negotiationProfile() {
       return {
         'manciniriccardo9@gmail.com': {
@@ -63,10 +59,6 @@ service cloud.firestore {
 
     function hasNegotiationsAccess() {
       return isAuthenticated() && negotiationProfile() != null;
-    }
-
-    function ownsPilotId(documentId) {
-      return isNegotiationsPilot() && documentId.matches(request.auth.uid + '_.*');
     }
 
     function ownsNegotiationId(documentId) {
@@ -106,30 +98,7 @@ service cloud.firestore {
     }
 
     function ownsReportId(reportId) {
-      return isApprovedEmployeeEmail() && !isNegotiationsPilot() &&
-        reportId.matches(request.auth.uid + '_.*');
-    }
-
-    function isValidPilotWinbackCall(data) {
-      return data.keys().hasOnly([
-          'ownerUid', 'taskId', 'customerKey', 'clientName', 'sourceCode', 'sourceName',
-          'calledDate', 'outcome', 'createdAt', 'updatedAt'
-        ]) && data.ownerUid == request.auth.uid &&
-        data.taskId is string && data.taskId.size() > 0 && data.taskId.size() < 200 &&
-        data.customerKey is string && data.customerKey.size() > 0 && data.customerKey.size() < 350 &&
-        data.clientName is string && data.clientName.size() > 0 && data.clientName.size() < 250 &&
-        data.sourceCode is string && data.sourceName is string &&
-        data.calledDate is string && data.calledDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
-        data.outcome in ['reached', 'not_reached', 'recovered'] &&
-        data.createdAt is timestamp && data.updatedAt == request.time;
-    }
-
-    function matchesRealWinbackTask(data) {
-      let task = get(/databases/$(database)/documents/call_tasks/$(data.taskId)).data;
-      return task.category == 'winback' &&
-        (task.sourceCode == '098' || ('assignedToUid' in task && task.assignedToUid == request.auth.uid)) &&
-        data.clientName == task.clientName && data.sourceCode == task.sourceCode && data.sourceName == task.sourceName &&
-        data.customerKey == (task.fiscalCode != '' ? task.fiscalCode : task.sourceCode + '|' + task.clientName);
+      return isApprovedEmployeeEmail() && reportId.matches(request.auth.uid + '_.*');
     }
 
     function roleMatchesApprovedEmail(data) {
@@ -472,7 +441,8 @@ service cloud.firestore {
     }
 
     function employeeCanUpdateCallTask() {
-      return isApprovedEmployeeEmail() && !isNegotiationsPilot() &&
+      return isApprovedEmployeeEmail() &&
+        (request.auth.token.email != 'manciniriccardo9@gmail.com' || resource.data.sourceCode in negotiationProfile().sourceCodes) &&
         (!('assignedToUid' in resource.data) ||
           resource.data.assignedToUid == '' ||
           resource.data.assignedToUid == request.auth.uid) &&
@@ -517,15 +487,6 @@ service cloud.firestore {
         ((ownsReportId(reportId) && request.resource.data.userId == request.auth.uid) || isAdmin());
     }
 
-    // The pilot continues to use a separate report collection.
-    match /negotiation_test_reports/{reportId} {
-      allow get: if ownsPilotId(reportId);
-      allow create, update: if ownsPilotId(reportId) &&
-        isValidDailyReport(request.resource.data) &&
-        request.resource.data.userId == request.auth.uid &&
-        reportId == request.auth.uid + '_' + request.resource.data.date;
-    }
-
     match /negotiation_test_customers/{customerId} {
       allow get: if ownsNegotiationId(customerId);
       allow create, update: if ownsNegotiationId(customerId) &&
@@ -560,17 +521,6 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
     }
 
-    // The report pilot only reads operational calls; its event log is isolated.
-    match /pilot_winback_calls/{callId} {
-      allow get: if ownsPilotId(callId);
-      allow list: if isNegotiationsPilot() && resource.data.ownerUid == request.auth.uid;
-      allow create: if ownsPilotId(callId) && isValidPilotWinbackCall(request.resource.data) &&
-        request.resource.data.createdAt == request.time && matchesRealWinbackTask(request.resource.data);
-      allow update: if ownsPilotId(callId) && resource.data.ownerUid == request.auth.uid &&
-        isValidPilotWinbackCall(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['outcome', 'updatedAt']);
-    }
-
     match /campaigns/{campaignId} {
       allow get, list: if isApprovedUserEmail();
       allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
@@ -601,7 +551,7 @@ service cloud.firestore {
     }
 
     match /new_clients/{clientId} {
-      allow read: if isAdmin() || isNegotiationsPilot() ||
+      allow read: if isAdmin() ||
         (hasNegotiationsAccess() && resource.data.sourceCode in negotiationProfile().sourceCodes);
       allow create, update: if isAdmin() &&
         isValidNewClient(request.resource.data);
@@ -609,7 +559,7 @@ service cloud.firestore {
     }
 
     match /expiration_records/{recordId} {
-      allow read: if isAdmin() || isNegotiationsPilot() ||
+      allow read: if isAdmin() ||
         (hasNegotiationsAccess() && resource.data.sourceCode in negotiationProfile().sourceCodes);
       allow create, update: if isAdmin() &&
         isValidExpirationRecord(request.resource.data);
@@ -625,8 +575,7 @@ service cloud.firestore {
 
     match /customer_registry/{identifier} {
       allow get: if isAdmin() || (identifier.matches('^[A-Z0-9]{16}$') &&
-        (isNegotiationsPilot() || (hasNegotiationsAccess() &&
-          resource.data.sourceCodes.hasAny(negotiationProfile().sourceCodes))));
+        hasNegotiationsAccess() && resource.data.sourceCodes.hasAny(negotiationProfile().sourceCodes));
       allow list: if isAdmin();
       allow create, update: if isAdmin() &&
         request.resource.data.keys().hasAll([

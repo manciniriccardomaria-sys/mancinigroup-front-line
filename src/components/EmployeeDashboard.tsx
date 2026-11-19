@@ -7,6 +7,7 @@ import {
   DailyReport,
   DailyObjectives,
   CategoryId,
+  DAILY_REPORTS_COLLECTION,
   createEmptyDailyObjectives,
   getAuthorizedEmployee,
   getReportCategoryValue,
@@ -41,12 +42,12 @@ import {
 } from '../callCenter';
 import { isCallCategoryEnabled } from '../callWorkflowConfig';
 import { subscribeToCallTasksForEmployee } from '../callTaskSubscriptions';
-import { getEmployeeReportCollection, hasNegotiationsAccess, isCustomerActivityCategory, isNegotiationsPilot } from '../negotiationModel';
+import { hasNegotiationsAccess, isCustomerActivityCategory } from '../negotiationModel';
 import ProposalDialog from './ProposalDialog';
 import NegotiationsTab from './NegotiationsTab';
 import { adjustDetailedReportCount } from '../negotiations';
 import PilotDailyReport from './PilotDailyReport';
-import PilotWinbackSummary, { PilotWinbackHistory } from './PilotWinbackSummary';
+import PilotWinbackSummary from './PilotWinbackSummary';
 import { PILOT_REPORT_CATEGORIES, PILOT_RETIRED_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
 import type { WinbackCalendarGroup } from '../winbackCalendar';
 
@@ -77,9 +78,7 @@ export default function EmployeeDashboard() {
     loading: categoriesLoading,
   } = useReportCategories();
   const employee = getAuthorizedEmployee(auth.currentUser?.email);
-  const isPilot = isNegotiationsPilot(auth.currentUser?.email);
   const negotiationsEnabled = hasNegotiationsAccess(auth.currentUser?.email);
-  const reportsCollection = getEmployeeReportCollection(auth.currentUser?.email);
   const categories = useMemo(() => negotiationsEnabled
     ? PILOT_REPORT_CATEGORIES.map(category => ({ ...category, label: pilotActivityLabel(category) }))
     : storedCategories, [negotiationsEnabled, storedCategories]);
@@ -104,7 +103,7 @@ export default function EmployeeDashboard() {
     }
 
     const reportId = `${user.uid}_${today}`;
-    const reportRef = doc(db, reportsCollection, reportId);
+    const reportRef = doc(db, DAILY_REPORTS_COLLECTION, reportId);
     const initialReport = createInitialReport(user.uid, (negotiationsEnabled ? employee?.name : user.displayName) || 'Utente', today);
     let unsubscribe: Unsubscribe | undefined;
     let cancelled = false;
@@ -150,7 +149,7 @@ export default function EmployeeDashboard() {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [today, reportsCollection]);
+  }, [today, employee, negotiationsEnabled]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -164,7 +163,7 @@ export default function EmployeeDashboard() {
       user.displayName || 'Utente',
       historyDate,
     );
-    const reportRef = doc(db, reportsCollection, `${user.uid}_${historyDate}`);
+    const reportRef = doc(db, DAILY_REPORTS_COLLECTION, `${user.uid}_${historyDate}`);
     setHistoryLoading(true);
     setHistoryError('');
 
@@ -184,7 +183,7 @@ export default function EmployeeDashboard() {
       setHistoryLoading(false);
       setHistoryError('Non è stato possibile caricare lo storico della giornata selezionata.');
     });
-  }, [showReportHistory, historyDate, reportsCollection]);
+  }, [showReportHistory, historyDate]);
 
   useEffect(() => onSnapshot(
     doc(db, 'daily_objectives', 'current'),
@@ -215,14 +214,14 @@ export default function EmployeeDashboard() {
     }
   ), [categories]);
 
-  useEffect(() => isPilot ? undefined : subscribeToCallTasksForEmployee(
+  useEffect(() => subscribeToCallTasksForEmployee(
     employee?.sourceCodes || [],
     auth.currentUser?.uid || '',
     setCallTasks,
     callError => {
       console.error('Error loading call notification count:', callError);
     },
-  ), [employee, isPilot]);
+  ), [employee]);
 
   useEffect(() => onSnapshot(collection(db, 'campaigns'), snapshot => {
     setCampaigns(snapshot.docs.map(item => ({
@@ -286,7 +285,7 @@ export default function EmployeeDashboard() {
     setSaving(true);
     const reportId = `${auth.currentUser.uid}_${today}`;
     try {
-      await setDoc(doc(db, reportsCollection, reportId), updatedReport, { merge: true });
+      await setDoc(doc(db, DAILY_REPORTS_COLLECTION, reportId), updatedReport, { merge: true });
     } catch (saveError) {
       console.error('Error saving daily report:', saveError);
       setError(getReportErrorMessage(saveError));
@@ -336,7 +335,6 @@ export default function EmployeeDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-lg leading-none">{negotiationsEnabled ? employee?.name : auth.currentUser?.displayName}</h1>
-                {isPilot && <span className="hidden lg:inline-flex rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">Test · Fonte 098</span>}
               </div>
               <p className="text-blue-200 text-xs mt-1 flex items-center gap-1">
                 <Calendar size={12} />
@@ -360,18 +358,13 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className={`max-w-7xl mx-auto px-4 ${negotiationsEnabled ? 'mt-2' : 'mt-4'}`}>
-        {isPilot && (
-          <div className="mb-2 bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg text-sm lg:hidden">
-            <strong>Profilo di test · Riccardo · Fonte 098.</strong> Prova la nuova rendicontazione. Le attività con scheda cliente vengono conteggiate al salvataggio.
-          </div>
-        )}
         {error && (
           <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
             {error} Le modifiche al report potrebbero non essere salvate finché Firestore non torna disponibile.
           </div>
         )}
 
-        <div className={`grid grid-cols-1 ${negotiationsEnabled && !isPilot ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} bg-white border border-slate-200 rounded-lg w-full sm:w-fit ${negotiationsEnabled ? 'mb-2 p-0.5' : 'mb-4 p-1'}`}>
+        <div className={`grid grid-cols-1 ${negotiationsEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} bg-white border border-slate-200 rounded-lg w-full sm:w-fit ${negotiationsEnabled ? 'mb-2 p-0.5' : 'mb-4 p-1'}`}>
           <button
             type="button"
             onClick={() => setSelectedView('report')}
@@ -384,7 +377,7 @@ export default function EmployeeDashboard() {
             <ClipboardList size={17} />
             Report giornaliero
           </button>
-          {!isPilot && <button
+          <button
             type="button"
             onClick={() => {
               setInitialWinbackGroup(undefined);
@@ -407,7 +400,7 @@ export default function EmployeeDashboard() {
                 {calendarNotificationCount}
               </span>
             )}
-          </button>}
+          </button>
           {negotiationsEnabled && (
             <button type="button" onClick={() => setSelectedView('negotiations')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold ${selectedView === 'negotiations' ? 'bg-[#003781] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -419,9 +412,8 @@ export default function EmployeeDashboard() {
         {selectedView === 'calendar' && <EmployeeCallCalendar
           key={initialWinbackGroup ?? 'calendar'}
           initialWinbackGroup={initialWinbackGroup}
-          readOnly={isPilot}
         />}
-        {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab isPilot={isPilot} />}
+        {negotiationsEnabled && selectedView === 'negotiations' && <NegotiationsTab />}
 
         {selectedView === 'report' && (
           <section className={negotiationsEnabled ? 'space-y-2' : 'space-y-3'}>
@@ -470,9 +462,8 @@ export default function EmployeeDashboard() {
                 </button>
               </div>
               </div>
-              {negotiationsEnabled && employee && (showReportHistory
-                ? isPilot && <PilotWinbackHistory date={historyDate} />
-                : <PilotWinbackSummary today={today} sourceCodes={employee.sourceCodes} onOpenCalendar={group => {
+              {negotiationsEnabled && employee && !showReportHistory && (
+                <PilotWinbackSummary today={today} sourceCodes={employee.sourceCodes} onOpenCalendar={group => {
                   setInitialWinbackGroup(group);
                   setSelectedView('calendar');
                 }} />)}

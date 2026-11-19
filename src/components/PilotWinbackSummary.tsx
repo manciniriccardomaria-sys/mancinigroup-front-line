@@ -2,9 +2,6 @@ import { useEffect, useState } from 'react';
 import { PhoneCall } from 'lucide-react';
 import type { CallTask } from '../callCenter';
 import { subscribeToCallTasksBySourceCodes } from '../callTaskSubscriptions';
-import { auth } from '../firebase';
-import { subscribeToPilotWinbackCalls } from '../pilotWinback';
-import { summarizeWinbackCalls, WINBACK_OUTCOMES, type PilotWinbackCall } from '../pilotWinbackModel';
 import { matchesWinbackCalendarGroup, WINBACK_CALENDAR_GROUPS, type WinbackCalendarGroup } from '../winbackCalendar';
 
 export default function PilotWinbackSummary({ today, sourceCodes, onOpenCalendar }: {
@@ -43,37 +40,5 @@ export default function PilotWinbackSummary({ today, sourceCodes, onOpenCalendar
       </div>
       {loadError && <p role="status" className="mt-1 text-[11px] text-red-700">Conteggi non disponibili.</p>}
     </aside>
-  );
-}
-
-export function PilotWinbackHistory({ date }: { date: string }) {
-  const [calls, setCalls] = useState<PilotWinbackCall[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const uid = auth.currentUser?.uid || '';
-
-  useEffect(() => subscribeToPilotWinbackCalls(data => {
-    setCalls(data);
-    setLoadError(false);
-  }, () => setLoadError(true)), [uid]);
-
-  const dailyCalls = (calls || []).filter(call => call.calledDate === date)
-    .sort((a, b) => a.clientName.localeCompare(b.clientName, 'it'));
-  const summary = summarizeWinbackCalls(dailyCalls, uid, date);
-
-  return (
-    <details className="rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1.5 text-xs lg:w-[260px] lg:shrink-0">
-      <summary className="cursor-pointer font-bold text-[#003781]">Registro Winback</summary>
-      {loadError ? <p role="status" className="mt-1 text-red-700">Registro Winback non disponibile.</p>
-        : !calls ? <p role="status" className="mt-1 text-slate-600">Caricamento…</p>
-        : <>
-          <p className="mt-1 text-slate-600">{summary.calls} chiamate · {summary.reached} raggiunti · {summary.recovered} recuperati</p>
-          {dailyCalls.length > 0 && <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-            {dailyCalls.map(call => <li key={call.id} className="rounded border border-blue-100 bg-white p-1.5">
-              <strong>{call.clientName}</strong>
-              <span className="block text-slate-600">Fonte {call.sourceCode} · {WINBACK_OUTCOMES.find(option => option.id === call.outcome)?.label}</span>
-            </li>)}
-          </ul>}
-        </>}
-    </details>
   );
 }

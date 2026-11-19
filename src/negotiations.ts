@@ -3,14 +3,13 @@ import {
   runTransaction, serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { getAuthorizedEmployee, getReportCategoryValue, type DailyReport } from './constants';
+import { DAILY_REPORTS_COLLECTION, getAuthorizedEmployee, getReportCategoryValue, type DailyReport } from './constants';
 import { getItalyDate } from './lib/utils';
 import { SOURCE_DIRECTORY } from './sourceDirectory';
 import { CUSTOMER_REGISTRY_COLLECTION } from './customerRegistryModel';
 import { PILOT_REPORT_CATEGORIES } from './pilotReportCatalog';
 import {
-  customerMatchFromRecord, getEmployeeReportCollection, hasNegotiationsAccess, isCustomerActivityCategory,
-  isNegotiationsPilot, isProposalCategory, isValidFiscalCode,
+  customerMatchFromRecord, hasNegotiationsAccess, isCustomerActivityCategory, isProposalCategory, isValidFiscalCode,
   NEGOTIATIONS_COLLECTION, NEGOTIATION_CUSTOMERS_COLLECTION, normalizeFiscalCode,
   VITARIV_DELIVERIES_COLLECTION, validateCustomer,
   type CustomerDetails, type CustomerMatch, type Negotiation, type NegotiationStatus,
@@ -31,7 +30,6 @@ export function createNegotiationId(): string {
 export async function findNegotiationCustomer(fiscalCode: string): Promise<CustomerMatch | null> {
   const { user, employee } = requireNegotiationsUser();
   const normalized = normalizeFiscalCode(fiscalCode);
-  const isPilot = isNegotiationsPilot(user.email);
   if (!isValidFiscalCode(normalized)) return null;
   const saved = await getDoc(doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${normalized}`));
   if (saved.exists()) return customerMatchFromRecord(saved.data());
@@ -40,12 +38,12 @@ export async function findNegotiationCustomer(fiscalCode: string): Promise<Custo
     if (registry.exists()) return customerMatchFromRecord(registry.data());
   } catch (error) {
     // A source-scoped registry lookup can be denied for an unknown or out-of-source CF.
-    if (isPilot || errorCode(error) !== 'permission-denied') throw error;
+    if (errorCode(error) !== 'permission-denied') throw error;
   }
 
-  const sourceFilters = isPilot ? [] : [where('sourceCode', 'in', employee.sourceCodes)];
+  const sourceFilter = where('sourceCode', 'in', employee.sourceCodes);
   const snapshots = await Promise.allSettled(['new_clients', 'call_tasks', 'expiration_records'].map(name =>
-    getDocs(query(collection(db, name), where('fiscalCode', '==', normalized), ...sourceFilters, limit(10)))
+    getDocs(query(collection(db, name), where('fiscalCode', '==', normalized), sourceFilter, limit(10)))
   ));
   const matches = snapshots.flatMap(result => result.status === 'fulfilled' ? result.value.docs.map(item => customerMatchFromRecord(item.data())) : []);
   if (matches.length === 0) {
@@ -97,7 +95,7 @@ async function saveCustomerActivity(input: CustomerActivityInput, delivery: bool
     throw new Error('Seleziona una fonte assegnata al tuo account.');
   }
   const dealRef = doc(db, delivery ? VITARIV_DELIVERIES_COLLECTION : NEGOTIATIONS_COLLECTION, input.id);
-  const reportRef = doc(db, getEmployeeReportCollection(user.email), `${user.uid}_${today}`);
+  const reportRef = doc(db, DAILY_REPORTS_COLLECTION, `${user.uid}_${today}`);
   const customerRef = doc(db, NEGOTIATION_CUSTOMERS_COLLECTION, `${user.uid}_${customer.fiscalCode}`);
 
   // A single commit links the activity, customer and counter. A retry uses the same ID.
@@ -145,7 +143,7 @@ export async function adjustDetailedReportCount(categoryId: string, delta: numbe
     throw new Error('Voce non modificabile manualmente. Registra l’attività tramite la scheda cliente.');
   }
   const today = getItalyDate();
-  const reportRef = doc(db, getEmployeeReportCollection(user.email), `${user.uid}_${today}`);
+  const reportRef = doc(db, DAILY_REPORTS_COLLECTION, `${user.uid}_${today}`);
   await runTransaction(db, async transaction => {
     const snapshot = await transaction.get(reportRef);
     const report = snapshot.exists() ? snapshot.data() as Partial<DailyReport> : {};

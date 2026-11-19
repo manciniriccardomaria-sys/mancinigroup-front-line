@@ -11,7 +11,7 @@ const STATUS_LABELS: Record<NegotiationStatus, string> = { open: 'In corso', ko:
 const filterClass = 'w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white';
 const displayDate = (value: string) => value.split('-').reverse().join('/');
 
-export default function NegotiationsTab({ isPilot }: { isPilot: boolean }) {
+export default function NegotiationsTab() {
   const [items, setItems] = useState<Negotiation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -46,7 +46,6 @@ export default function NegotiationsTab({ isPilot }: { isPilot: boolean }) {
           <h2 className="flex items-center gap-2 font-bold text-xl text-slate-800"><Handshake size={22} className="text-[#003781]" />Trattative</h2>
           <p className="text-sm text-slate-500 mt-1">Proposte per fonte · {filtered.length} di {items.length} trattative</p>
         </div>
-        {isPilot && <span className="rounded-full px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold">Dati di test</span>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

@@ -3,6 +3,7 @@ import { db, auth } from '../firebase';
 import { collection, doc, query, onSnapshot, orderBy, setDoc } from 'firebase/firestore';
 import {
   DailyReport,
+  DAILY_REPORTS_COLLECTION,
   UserProfile,
   CategoryId,
   getAuthorizedAgent,
@@ -65,7 +66,6 @@ import AdminCallCenter from './AdminCallCenter';
 import AdminDailyObjectives from './AdminDailyObjectives';
 import AdminReportCategories from './AdminReportCategories';
 import { downloadCSV, escapeCSVCell } from '../lib/csv';
-import { isNegotiationsPilot } from '../negotiationModel';
 import { PILOT_REPORT_CATEGORIES, pilotActivityLabel } from '../pilotReportCatalog';
 
 type Tab =
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
       setLoading(false);
     }, 12000);
 
-    const q = query(collection(db, 'daily_reports'), orderBy('date', 'desc'));
+    const q = query(collection(db, DAILY_REPORTS_COLLECTION), orderBy('date', 'desc'));
     const unsubscribeReports = onSnapshot(q, (snapshot) => {
       window.clearTimeout(loadingTimeout);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyReport));
@@ -164,7 +164,7 @@ export default function AdminDashboard() {
         });
       }
 
-      const employees = synchronizedUsers.filter(u => u.role === 'employee' && !isNegotiationsPilot(u.email));
+      const employees = synchronizedUsers.filter(u => u.role === 'employee');
       setUsers(employees);
       if (!employeeSelectionInitializedRef.current) {
         setSelectedEmployees(employees.map(e => e.uid));

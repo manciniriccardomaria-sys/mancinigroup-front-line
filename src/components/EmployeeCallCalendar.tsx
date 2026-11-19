@@ -76,9 +76,8 @@ const CLIENT_LISTS = [
 ] as const;
 type ClientList = typeof CLIENT_LISTS[number];
 
-export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = false }: {
+export default function EmployeeCallCalendar({ initialWinbackGroup }: {
   initialWinbackGroup?: WinbackCalendarGroup;
-  readOnly?: boolean;
 }) {
   const [tasks, setTasks] = useState<CallTask[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -661,7 +660,7 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
             <p className="mb-4 text-xs text-slate-500">
               Le chiamate restano consultabili nella data prevista e nella data dell’ultima azione,
               anche dopo la chiusura o la scadenza. Seleziona un giorno precedente per vedere lo storico.
-              {!readOnly && ' I clienti Winback restano modificabili anche dopo la data anniversario.'}
+              {' '}I clienti Winback restano modificabili anche dopo la data anniversario.
             </p>
 
             <div className="space-y-3">
@@ -677,8 +676,8 @@ export default function EmployeeCallCalendar({ initialWinbackGroup, readOnly = f
                   canEditTaskOutcome(task, today);
                 const isOwnSource = ownSourceCodes.some(code => code === task.sourceCode);
                 const assignedToOther = task.assignedToUid && task.assignedToUid !== currentUid;
-                const canEdit = !readOnly && isOutcomeEditable && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
-                const needsClaim = !readOnly && isOutcomeEditable && !isOwnSource && !task.assignedToUid;
+                const canEdit = isOutcomeEditable && !assignedToOther && (isOwnSource || task.assignedToUid === currentUid);
+                const needsClaim = isOutcomeEditable && !isOwnSource && !task.assignedToUid;
 
                 return (
                   <article

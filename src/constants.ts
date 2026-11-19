@@ -1,4 +1,5 @@
 export type CategoryId = string;
+export const DAILY_REPORTS_COLLECTION = 'daily_reports';
 
 export type DailyReport = {
   id?: string;
@@ -67,6 +68,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Riccardo collaboratore',
     email: 'manciniriccardo9@gmail.com',
     sourceCodes: ['098'],
+    negotiationsEnabled: true,
     canHelpOtherSources: false,
   },
   {

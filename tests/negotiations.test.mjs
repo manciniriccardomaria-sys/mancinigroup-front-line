@@ -10,16 +10,12 @@ const model = await loadModule('src/negotiationModel.ts');
 const customer = { fiscalCode: 'RSSMRA80A01H501U', firstName: 'Mario', lastName: 'Rossi', birthDate: '1980-01-01' };
 const marinaEmail = 'b.marinamancinigroup@gmail.com';
 const nicoleEmail = 'nicolemancinigroup@gmail.com';
+const riccardoEmail = 'manciniriccardo9@gmail.com';
 
-test('Marina, Nicoletta and Riccardo have negotiations access and use their existing report collections', () => {
-  assert.equal(model.isNegotiationsPilot(' MANCINIRICCARDO9@gmail.com '), true);
-  assert.equal(model.isNegotiationsPilot(marinaEmail), false);
+test('Marina, Nicoletta and Riccardo have negotiations access', () => {
   assert.equal(model.hasNegotiationsAccess(` ${marinaEmail.toUpperCase()} `), true);
   assert.equal(model.hasNegotiationsAccess(nicoleEmail), true);
-  assert.equal(model.hasNegotiationsAccess(model.NEGOTIATIONS_PILOT_EMAIL), true);
-  assert.equal(model.getEmployeeReportCollection(marinaEmail), 'daily_reports');
-  assert.equal(model.getEmployeeReportCollection(nicoleEmail), 'daily_reports');
-  assert.equal(model.getEmployeeReportCollection(model.NEGOTIATIONS_PILOT_EMAIL), 'negotiation_test_reports');
+  assert.equal(model.hasNegotiationsAccess(` ${riccardoEmail.toUpperCase()} `), true);
   for (const email of ['manciniriccardomaria@gmail.com', 'isabella.cappelluti@gmail.com', null, '']) assert.equal(model.hasNegotiationsAccess(email), false);
   for (const category of ['prevMotorTerzi', 'prevRetailTerzi', 'incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
 });
@@ -95,7 +91,7 @@ const firestoreMock = {
 const service = await loadModule('src/negotiations.ts', [firestoreMock]);
 const { getItalyDate } = await loadModule('src/lib/utils.ts');
 function reset() {
-  globalThis.negotiationUser = { uid: 'pilot', email: model.NEGOTIATIONS_PILOT_EMAIL };
+  globalThis.negotiationUser = { uid: 'riccardo', email: riccardoEmail };
   globalThis.negotiationStore = {};
   globalThis.negotiationWrites = [];
   globalThis.negotiationReads = [];
@@ -104,13 +100,13 @@ function reset() {
   globalThis.failNegotiationCommit = false;
   globalThis.denyRegistryLookup = false;
 }
-const proposal = () => ({ id: 'pilot_deal-1', customer, categoryId: 'smeg', proposalLabel: 'SMEG', proposalDate: getItalyDate(), sourceCode: '098', sourceName: 'MANCINI RICCARDO MARIA' });
+const proposal = () => ({ id: 'riccardo_deal-1', customer, categoryId: 'smeg', proposalLabel: 'SMEG', proposalDate: getItalyDate(), sourceCode: '098', sourceName: 'MANCINI RICCARDO MARIA' });
 
-test('saving is atomic, isolated from production and idempotent on retry', async () => {
+test('saving updates Riccardo’s operational report atomically and is idempotent on retry', async () => {
   reset();
-  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { smeg: 4, incassi: 3 } };
+  globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()] = { values: { smeg: 4, incassi: 3 } };
   await service.saveNegotiation(proposal());
-  assert.deepEqual(globalThis.negotiationWrites.map(write => write.ref.name), ['negotiation_test_deals', 'negotiation_test_customers', 'negotiation_test_reports']);
+  assert.deepEqual(globalThis.negotiationWrites.map(write => write.ref.name), ['negotiation_test_deals', 'negotiation_test_customers', 'daily_reports']);
   assert.deepEqual(globalThis.negotiationWrites[2].data.values, { smeg: 5, incassi: 3 });
   assert.equal(globalThis.negotiationWrites[0].data.status, 'open');
   await service.saveNegotiation(proposal());
@@ -175,23 +171,23 @@ test('Nicoletta records negotiations for source 017 in her existing daily report
   for (const read of globalThis.negotiationReads) assert.deepEqual(read.filters[1], ['sourceCode', 'in', ['017']]);
 });
 
-test('other pilot counters preserve proposal counts and never become negative', async () => {
+test('manual counters preserve proposal counts and never become negative', async () => {
   reset();
   await service.saveNegotiation(proposal());
   await service.adjustDetailedReportCount('incassi', 1);
-  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 1 });
+  assert.deepEqual(globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()].values, { smeg: 1, incassi: 1 });
   await service.adjustDetailedReportCount('incassi', -1);
   await service.adjustDetailedReportCount('incassi', -1);
-  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
+  assert.deepEqual(globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()].values, { smeg: 1, incassi: 0 });
   await service.adjustDetailedReportCount('emissProtection', 1);
-  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { smeg: 1, incassi: 0, emissProtection: 1 });
+  assert.deepEqual(globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()].values, { smeg: 1, incassi: 0, emissProtection: 1 });
   await assert.rejects(service.adjustDetailedReportCount('smeg', -1));
   for (const category of ['winbackMag25', 'prevRetailSe', 'emissRetailSe', 'vitarivConsegna', 'scegliAllianzGen26', 'unknown']) await assert.rejects(service.adjustDetailedReportCount(category, 1));
 });
 
 test('third-party Motor and Retail claims have independent counters from reception claims', async () => {
   reset();
-  const reportPath = 'negotiation_test_reports/pilot_' + getItalyDate();
+  const reportPath = 'daily_reports/riccardo_' + getItalyDate();
   globalThis.negotiationStore[reportPath] = { values: { sinistriMotor: 2, sinistriRetail: 3 } };
   await service.adjustDetailedReportCount('sinistriMotorTerzi', 1);
   await service.adjustDetailedReportCount('sinistriRetailTerzi', 1);
@@ -203,11 +199,11 @@ test('third-party Motor and Retail claims have independent counters from recepti
 
 test('Vitariv saves customer details and a delivery atomically without opening a negotiation; retries do not duplicate', async () => {
   reset();
-  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { vitarivConsegna: 2, winbackMag25: 4 } };
+  globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()] = { values: { vitarivConsegna: 2, winbackMag25: 4 } };
   const delivery = { ...proposal(), categoryId: 'vitarivConsegna', proposalLabel: 'Vitariv · consegne effettuate' };
   await assert.rejects(service.saveNegotiation(delivery), /non prevede una proposta/);
   await service.saveVitarivDelivery(delivery);
-  assert.deepEqual(globalThis.negotiationWrites.map(write => write.ref.name), ['negotiation_test_deliveries', 'negotiation_test_customers', 'negotiation_test_reports']);
+  assert.deepEqual(globalThis.negotiationWrites.map(write => write.ref.name), ['negotiation_test_deliveries', 'negotiation_test_customers', 'daily_reports']);
   const saved = globalThis.negotiationWrites[0].data;
   assert.equal(saved.fiscalCode, customer.fiscalCode);
   assert.equal(saved.activityLabel, delivery.proposalLabel);
@@ -231,7 +227,7 @@ test('Vitariv rejects missing personal details and failures leave both the custo
 
 test('Lovia continues the existing Protection counter; removed ScegliAllianz proposals cannot be added', async () => {
   reset();
-  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { contattiProtection: 3 } };
+  globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()] = { values: { contattiProtection: 3 } };
   await service.saveNegotiation({ ...proposal(), categoryId: 'contattiProtection', proposalLabel: 'Lovia · proposte presentate' });
   assert.equal(globalThis.negotiationWrites[0].data.proposalLabel, 'Lovia · proposte presentate');
   assert.equal(globalThis.negotiationWrites[2].data.values.contattiProtection, 4);
@@ -240,14 +236,14 @@ test('Lovia continues the existing Protection counter; removed ScegliAllianz pro
 
 test('each new ULTRA proposal records its own product without changing the legacy Retail total', async () => {
   reset();
-  globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()] = { values: { prevRetailSe: 5 } };
+  globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()] = { values: { prevRetailSe: 5 } };
   for (const categoryId of ['prevUltraSalute', 'prevUltraCasa', 'prevUltraImpresa']) {
-    await service.saveNegotiation({ ...proposal(), id: `pilot_${categoryId}`, categoryId, proposalLabel: categoryId });
+    await service.saveNegotiation({ ...proposal(), id: `riccardo_${categoryId}`, categoryId, proposalLabel: categoryId });
   }
-  assert.deepEqual(globalThis.negotiationStore['negotiation_test_reports/pilot_' + getItalyDate()].values, { prevRetailSe: 5, prevUltraSalute: 1, prevUltraCasa: 1, prevUltraImpresa: 1 });
+  assert.deepEqual(globalThis.negotiationStore['daily_reports/riccardo_' + getItalyDate()].values, { prevRetailSe: 5, prevUltraSalute: 1, prevUltraCasa: 1, prevUltraImpresa: 1 });
 });
 
-test('invalid source, date, category or non-pilot session cannot write', async () => {
+test('invalid source, date, category or unauthorized session cannot write', async () => {
   reset();
   for (const changes of [{ sourceCode: '005' }, { sourceName: 'wrong' }, { categoryId: 'incassi' }, { proposalDate: '2000-01-01' }]) await assert.rejects(service.saveNegotiation({ ...proposal(), ...changes }));
   globalThis.negotiationUser.email = 'manciniriccardomaria@gmail.com';
@@ -257,21 +253,22 @@ test('invalid source, date, category or non-pilot session cannot write', async (
 
 test('lookup uses saved separate names first and otherwise finds imported clients with birth dates', async () => {
   reset();
-  globalThis.negotiationStore['negotiation_test_customers/pilot_' + customer.fiscalCode] = customer;
+  globalThis.negotiationStore['negotiation_test_customers/riccardo_' + customer.fiscalCode] = customer;
   assert.equal((await service.findNegotiationCustomer(customer.fiscalCode)).firstName, 'Mario');
   assert.equal(globalThis.negotiationReads.length, 0);
   globalThis.negotiationStore = {};
-  globalThis.importedCustomers = { call_tasks: [{ fiscalCode: customer.fiscalCode, clientName: 'ROSSI MARIO', birthDate: customer.birthDate }] };
+  globalThis.importedCustomers = { call_tasks: [{ fiscalCode: customer.fiscalCode, clientName: 'ROSSI MARIO', sourceCode: '098', birthDate: customer.birthDate }] };
   assert.equal((await service.findNegotiationCustomer(customer.fiscalCode)).birthDate, customer.birthDate);
   assert.equal(globalThis.negotiationReads.length, 3);
+  for (const read of globalThis.negotiationReads) assert.deepEqual(read.filters[1], ['sourceCode', 'in', ['098']]);
   globalThis.importedCustomers = {};
   assert.equal(await service.findNegotiationCustomer(customer.fiscalCode), null);
 });
 
 test('OK/KO updates the outcome without changing proposal dates or counters', async () => {
   reset();
-  await service.setNegotiationStatus('pilot_deal-1', 'ok');
-  assert.deepEqual(globalThis.negotiationWrites, [{ ref: { name: 'negotiation_test_deals', id: 'pilot_deal-1' }, data: { status: 'ok', updatedAt: 'server-time' } }]);
+  await service.setNegotiationStatus('riccardo_deal-1', 'ok');
+  assert.deepEqual(globalThis.negotiationWrites, [{ ref: { name: 'negotiation_test_deals', id: 'riccardo_deal-1' }, data: { status: 'ok', updatedAt: 'server-time' } }]);
 });
 
 test('the master registry supplies compound names directly without scanning campaign archives', async () => {
@@ -287,7 +284,7 @@ test('the master registry supplies compound names directly without scanning camp
 
 test('a failed legacy archive cannot hide a client found in another archive', async () => {
   reset(); globalThis.negotiationReadFailures = ['new_clients'];
-  globalThis.importedCustomers = { call_tasks: [{ ...customer, clientName: 'ROSSI MARIO' }] };
+  globalThis.importedCustomers = { call_tasks: [{ ...customer, clientName: 'ROSSI MARIO', sourceCode: '098' }] };
   assert.equal((await service.findNegotiationCustomer(customer.fiscalCode)).firstName, 'Mario');
   globalThis.importedCustomers = {};
   await assert.rejects(service.findNegotiationCustomer(customer.fiscalCode), /archive unavailable/);
