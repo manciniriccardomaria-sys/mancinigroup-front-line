@@ -47,12 +47,22 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.email == 'manciniriccardo9@gmail.com';
     }
 
-    function isMarina() {
-      return isAuthenticated() && request.auth.token.email == 'b.marinamancinigroup@gmail.com';
+    function negotiationProfile() {
+      return {
+        'manciniriccardo9@gmail.com': {
+          'ownerName': 'Riccardo collaboratore', 'sourceCodes': ['098'], 'sourceName': 'MANCINI RICCARDO MARIA'
+        },
+        'b.marinamancinigroup@gmail.com': {
+          'ownerName': 'Marina Bartoli', 'sourceCodes': ['005', '043'], 'sourceName': 'BARTOLI MARINA ANGELA'
+        },
+        'nicolemancinigroup@gmail.com': {
+          'ownerName': 'Nicoletta Cecchini', 'sourceCodes': ['017'], 'sourceName': 'CECCHINI NICOLETTA'
+        }
+      }.get(request.auth.token.get('email', ''), null);
     }
 
     function hasNegotiationsAccess() {
-      return isNegotiationsPilot() || isMarina();
+      return isAuthenticated() && negotiationProfile() != null;
     }
 
     function ownsPilotId(documentId) {
@@ -63,15 +73,10 @@ service cloud.firestore {
       return hasNegotiationsAccess() && documentId.matches(request.auth.uid + '_.*');
     }
 
-    function marinaSourceCodes() {
-      return ['005', '043'];
-    }
-
     function isValidNegotiationSource(data) {
-      return (isNegotiationsPilot() && data.ownerName == 'Riccardo collaboratore' &&
-          data.sourceCode == '098' && data.sourceName == 'MANCINI RICCARDO MARIA') ||
-        (isMarina() && data.ownerName == 'Marina Bartoli' &&
-          data.sourceCode in marinaSourceCodes() && data.sourceName == 'BARTOLI MARINA ANGELA');
+      let profile = negotiationProfile();
+      return profile != null && data.ownerName == profile.ownerName &&
+        data.sourceCode in profile.sourceCodes && data.sourceName == profile.sourceName;
     }
 
     function isValidNegotiationCustomer(data) {
@@ -596,14 +601,16 @@ service cloud.firestore {
     }
 
     match /new_clients/{clientId} {
-      allow read: if isAdmin() || isNegotiationsPilot() || (isMarina() && resource.data.sourceCode in marinaSourceCodes());
+      allow read: if isAdmin() || isNegotiationsPilot() ||
+        (hasNegotiationsAccess() && resource.data.sourceCode in negotiationProfile().sourceCodes);
       allow create, update: if isAdmin() &&
         isValidNewClient(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /expiration_records/{recordId} {
-      allow read: if isAdmin() || isNegotiationsPilot() || (isMarina() && resource.data.sourceCode in marinaSourceCodes());
+      allow read: if isAdmin() || isNegotiationsPilot() ||
+        (hasNegotiationsAccess() && resource.data.sourceCode in negotiationProfile().sourceCodes);
       allow create, update: if isAdmin() &&
         isValidExpirationRecord(request.resource.data);
       allow delete: if isAdmin();
@@ -618,7 +625,8 @@ service cloud.firestore {
 
     match /customer_registry/{identifier} {
       allow get: if isAdmin() || (identifier.matches('^[A-Z0-9]{16}$') &&
-        (isNegotiationsPilot() || (isMarina() && resource.data.sourceCodes.hasAny(marinaSourceCodes()))));
+        (isNegotiationsPilot() || (hasNegotiationsAccess() &&
+          resource.data.sourceCodes.hasAny(negotiationProfile().sourceCodes))));
       allow list: if isAdmin();
       allow create, update: if isAdmin() &&
         request.resource.data.keys().hasAll([

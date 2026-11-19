@@ -1,7 +1,7 @@
 import { differenceInCalendarDays, isValid, parseISO } from 'date-fns';
+import { getAuthorizedEmployee } from './constants';
 
 export const NEGOTIATIONS_PILOT_EMAIL = 'manciniriccardo9@gmail.com';
-const MARINA_EMAIL = 'b.marinamancinigroup@gmail.com';
 export const PILOT_REPORTS_COLLECTION = 'negotiation_test_reports';
 export const NEGOTIATIONS_COLLECTION = 'negotiation_test_deals';
 export const NEGOTIATION_CUSTOMERS_COLLECTION = 'negotiation_test_customers';
@@ -12,7 +12,7 @@ export function isNegotiationsPilot(email: string | null | undefined): boolean {
 }
 
 export function hasNegotiationsAccess(email: string | null | undefined): boolean {
-  return isNegotiationsPilot(email) || email?.trim().toLowerCase() === MARINA_EMAIL;
+  return isNegotiationsPilot(email) || getAuthorizedEmployee(email)?.negotiationsEnabled === true;
 }
 
 export function getEmployeeReportCollection(email: string | null | undefined): string {

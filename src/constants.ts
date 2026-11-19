@@ -57,6 +57,7 @@ export interface AuthorizedEmployee {
   name: string;
   email: string;
   sourceCodes: readonly string[];
+  negotiationsEnabled?: boolean;
   defaultNegotiationSourceCode?: string;
   canHelpOtherSources?: boolean;
 }
@@ -72,6 +73,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Marina Bartoli',
     email: 'b.marinamancinigroup@gmail.com',
     sourceCodes: ['005', '043'],
+    negotiationsEnabled: true,
     defaultNegotiationSourceCode: '005',
   },
   {
@@ -83,6 +85,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Nicoletta Cecchini',
     email: 'nicolemancinigroup@gmail.com',
     sourceCodes: ['017'],
+    negotiationsEnabled: true,
   },
   {
     name: 'Rosa Ruggieri',

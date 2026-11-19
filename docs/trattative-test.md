@@ -1,7 +1,8 @@
 # Trattative e rendicontazione giornaliera
 
-Il flusso è attivo per Marina Bartoli, che usa le fonti `005` e `043`, e
-per il profilo di test Riccardo collaboratore, che usa la fonte `098`.
+Il flusso è attivo per Marina Bartoli (fonti `005` e `043`), Nicoletta
+Cecchini (fonte `017`) e il profilo di test Riccardo collaboratore (fonte
+`098`).
 
 ## Attività collegate
 
@@ -24,7 +25,7 @@ ne modifica l'etichetta. Per aggiungere altre proposte occorre aggiornare
 ## Rendicontazione giornaliera
 
 Il catalogo `pilotReportCatalog.ts` mostra quattro riquadri: **Ricezione,
-Promozione, Emissione, Terzi**. I report di Marina continuano a usare
+Promozione, Emissione, Terzi**. I report di Marina e Nicoletta usano
 `daily_reports`, con le giornate già rendicontate e la visibilità nelle
 analisi amministrative.
 Le voci Retail vengono sostituite da ULTRA Salute, SMEG, ULTRA Casa e ULTRA
@@ -56,8 +57,8 @@ I tre contatori leggono le schede del calendario delle fonti del profilo.
 ancora da effettuare con data precedente, **Fatte** quelle con un esito
 registrato oggi. Un tentativo con esito non raggiungibile può risultare tra
 le chiamate fatte e rimanere da effettuare o arretrato. Ogni contatore apre
-il calendario su oggi, con il filtro selezionato. Marina può lavorare le
-chiamate dal calendario con i suoi permessi operativi.
+il calendario su oggi, con il filtro selezionato. Marina e Nicoletta possono
+lavorare le chiamate dal calendario con i propri permessi operativi.
 
 Riccardo può consultare nello storico del report le chiamate già salvate nel
 registro `pilot_winback_calls` per la giornata selezionata.
@@ -67,13 +68,14 @@ registro `pilot_winback_calls` per la giornata selezionata.
 Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
 Proposta e data italiana sono precompilate. Nelle trattative di Marina è
 preselezionata la fonte `005`. La fonte `043` è disponibile nel menu.
-Annullare chiude la scheda senza registrare l’attività.
+Per Nicoletta è preselezionata la fonte `017`. Annullare chiude la scheda
+senza registrare l’attività.
 
 Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento
 identificato dal CF. Se il cliente non è disponibile, la ricerca consulta
-gli archivi `new_clients`, `call_tasks` ed `expiration_records`. Per Marina,
-la ricerca negli archivi e nell’anagrafica è limitata alle sue fonti.
+gli archivi `new_clients`, `call_tasks` ed `expiration_records`. Per Marina
+e Nicoletta, la ricerca è limitata alle fonti assegnate al profilo.
 Gli import dell'anagrafica generale separano `Cognome Nome` verificando le
 lettere del CF, anche per i cognomi composti. Le separazioni incerte vengono
 segnalate e restano correggibili. I CF associati a dati discordanti sono
