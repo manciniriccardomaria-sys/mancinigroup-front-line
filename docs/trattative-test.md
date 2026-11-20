@@ -65,8 +65,8 @@ Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
 Proposta e data italiana sono precompilate. Nelle trattative di Marina è
 preselezionata la fonte `005`. La fonte `043` è disponibile nel menu.
 Per Nicoletta, Riccardo e Valeria è preselezionata la loro unica fonte.
-Rosa sceglie tra `003` e `045`. Annullare chiude la scheda senza
-registrare l’attività.
+Per Rosa è preselezionata la fonte `003`, con `045` disponibile nel menu.
+Annullare chiude la scheda senza registrare l’attività.
 
 Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento
