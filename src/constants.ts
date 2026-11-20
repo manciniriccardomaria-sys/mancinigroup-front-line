@@ -93,6 +93,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Rosa Ruggieri',
     email: 'rossellamancinigroup@gmail.com',
     sourceCodes: ['003', '045'],
+    negotiationsEnabled: true,
   },
   {
     name: 'Angela Sforza',
@@ -103,6 +104,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Maria Valeria Bellapianta',
     email: 'valeriamancinigroup@gmail.com',
     sourceCodes: ['008'],
+    negotiationsEnabled: true,
   },
   {
     name: 'Gaetano Calo',

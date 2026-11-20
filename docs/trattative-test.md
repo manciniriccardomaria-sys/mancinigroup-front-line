@@ -1,7 +1,8 @@
 # Trattative e rendicontazione giornaliera
 
 Il flusso è attivo per Marina Bartoli (fonti `005` e `043`), Nicoletta
-Cecchini (fonte `017`) e Riccardo collaboratore (fonte `098`).
+Cecchini (fonte `017`), Riccardo collaboratore (fonte `098`), Rosa Ruggieri
+(fonti `003` e `045`) e Maria Valeria Bellapianta (fonte `008`).
 
 ## Attività collegate
 
@@ -63,8 +64,9 @@ le chiamate dal calendario con i propri permessi operativi.
 Il + apre una finestra con codice fiscale, nome, cognome e data di nascita.
 Proposta e data italiana sono precompilate. Nelle trattative di Marina è
 preselezionata la fonte `005`. La fonte `043` è disponibile nel menu.
-Per Nicoletta è preselezionata la fonte `017` e per Riccardo la `098`.
-Annullare chiude la scheda senza registrare l’attività.
+Per Nicoletta, Riccardo e Valeria è preselezionata la loro unica fonte.
+Rosa sceglie tra `003` e `045`. Annullare chiude la scheda senza
+registrare l’attività.
 
 Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento

@@ -53,6 +53,12 @@ service cloud.firestore {
         },
         'nicolemancinigroup@gmail.com': {
           'ownerName': 'Nicoletta Cecchini', 'sourceCodes': ['017'], 'sourceName': 'CECCHINI NICOLETTA'
+        },
+        'rossellamancinigroup@gmail.com': {
+          'ownerName': 'Rosa Ruggieri', 'sourceCodes': ['003', '045'], 'sourceName': 'RUGGIERI ROSA'
+        },
+        'valeriamancinigroup@gmail.com': {
+          'ownerName': 'Maria Valeria Bellapianta', 'sourceCodes': ['008'], 'sourceName': 'BELLAPIANTA MARIA VALERIA'
         }
       }.get(request.auth.token.get('email', ''), null);
     }

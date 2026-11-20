@@ -11,11 +11,15 @@ const customer = { fiscalCode: 'RSSMRA80A01H501U', firstName: 'Mario', lastName:
 const marinaEmail = 'b.marinamancinigroup@gmail.com';
 const nicoleEmail = 'nicolemancinigroup@gmail.com';
 const riccardoEmail = 'manciniriccardo9@gmail.com';
+const rossellaEmail = 'rossellamancinigroup@gmail.com';
+const valeriaEmail = 'valeriamancinigroup@gmail.com';
 
-test('Marina, Nicoletta and Riccardo have negotiations access', () => {
+test('the enabled employees have negotiations access', () => {
   assert.equal(model.hasNegotiationsAccess(` ${marinaEmail.toUpperCase()} `), true);
   assert.equal(model.hasNegotiationsAccess(nicoleEmail), true);
   assert.equal(model.hasNegotiationsAccess(` ${riccardoEmail.toUpperCase()} `), true);
+  assert.equal(model.hasNegotiationsAccess(rossellaEmail), true);
+  assert.equal(model.hasNegotiationsAccess(valeriaEmail), true);
   for (const email of ['manciniriccardomaria@gmail.com', 'isabella.cappelluti@gmail.com', null, '']) assert.equal(model.hasNegotiationsAccess(email), false);
   for (const category of ['prevMotorTerzi', 'prevRetailTerzi', 'incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
 });
@@ -169,6 +173,25 @@ test('Nicoletta records negotiations for source 017 in her existing daily report
   globalThis.importedCustomers = { call_tasks: [{ ...customer, fiscalCode: otherFiscalCode, sourceCode: '043' }] };
   assert.equal(await service.findNegotiationCustomer(otherFiscalCode), null);
   for (const read of globalThis.negotiationReads) assert.deepEqual(read.filters[1], ['sourceCode', 'in', ['017']]);
+});
+
+test('Valeria and Rossella can save to their assigned sources using their existing reports', async () => {
+  for (const { uid, email, ownerName, sourceName, sourceCodes } of [
+    { uid: 'valeria', email: valeriaEmail, ownerName: 'Maria Valeria Bellapianta', sourceName: 'BELLAPIANTA MARIA VALERIA', sourceCodes: ['008'] },
+    { uid: 'rossella', email: rossellaEmail, ownerName: 'Rosa Ruggieri', sourceName: 'RUGGIERI ROSA', sourceCodes: ['003', '045'] },
+  ]) {
+    reset();
+    globalThis.negotiationUser = { uid, email };
+    const reportPath = `daily_reports/${uid}_${getItalyDate()}`;
+    globalThis.negotiationStore[reportPath] = { values: { incassi: 3, smeg: 2 } };
+    for (const sourceCode of sourceCodes) {
+      const id = `${uid}_deal-${sourceCode}`;
+      await service.saveNegotiation({ ...proposal(), id, sourceCode, sourceName });
+      assert.equal(globalThis.negotiationStore[`negotiation_test_deals/${id}`].ownerName, ownerName);
+    }
+    assert.deepEqual(globalThis.negotiationStore[reportPath].values, { incassi: 3, smeg: 2 + sourceCodes.length });
+    await assert.rejects(service.saveNegotiation({ ...proposal(), id: `${uid}_other`, sourceCode: '017', sourceName: 'CECCHINI NICOLETTA' }), /fonte assegnata/);
+  }
 });
 
 test('manual counters preserve proposal counts and never become negative', async () => {
