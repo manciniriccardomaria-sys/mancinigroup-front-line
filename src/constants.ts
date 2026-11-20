@@ -100,6 +100,7 @@ export const AUTHORIZED_EMPLOYEES: readonly AuthorizedEmployee[] = [
     name: 'Angela Sforza',
     email: 's.angelamancinigroup@gmail.com',
     sourceCodes: ['028', '082', '038'],
+    negotiationsEnabled: true,
   },
   {
     name: 'Maria Valeria Bellapianta',

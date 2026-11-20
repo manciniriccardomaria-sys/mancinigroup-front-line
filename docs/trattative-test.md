@@ -2,7 +2,8 @@
 
 Il flusso è attivo per Marina Bartoli (fonti `005` e `043`), Nicoletta
 Cecchini (fonte `017`), Riccardo collaboratore (fonte `098`), Rosa Ruggieri
-(fonti `003` e `045`) e Maria Valeria Bellapianta (fonte `008`).
+(fonti `003` e `045`), Maria Valeria Bellapianta (fonte `008`) e Angela
+Sforza (fonti `028`, `038` e `082`).
 
 ## Attività collegate
 
@@ -66,7 +67,8 @@ Proposta e data italiana sono precompilate. Nelle trattative di Marina è
 preselezionata la fonte `005`. La fonte `043` è disponibile nel menu.
 Per Nicoletta, Riccardo e Valeria è preselezionata la loro unica fonte.
 Per Rosa è preselezionata la fonte `003`, con `045` disponibile nel menu.
-Annullare chiude la scheda senza registrare l’attività.
+Angela sceglie tra `028`, `038` e `082`. Annullare chiude la scheda senza
+registrare l’attività.
 
 Il codice fiscale cerca prima le anagrafiche già inserite dal profilo, poi
 l'anagrafica generale `customer_registry`, con lettura diretta del documento

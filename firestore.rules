@@ -57,6 +57,9 @@ service cloud.firestore {
         'rossellamancinigroup@gmail.com': {
           'ownerName': 'Rosa Ruggieri', 'sourceCodes': ['003', '045'], 'sourceName': 'RUGGIERI ROSA'
         },
+        's.angelamancinigroup@gmail.com': {
+          'ownerName': 'Angela Sforza', 'sourceCodes': ['028', '082', '038'], 'sourceName': 'SFORZA ANGELA'
+        },
         'valeriamancinigroup@gmail.com': {
           'ownerName': 'Maria Valeria Bellapianta', 'sourceCodes': ['008'], 'sourceName': 'BELLAPIANTA MARIA VALERIA'
         }

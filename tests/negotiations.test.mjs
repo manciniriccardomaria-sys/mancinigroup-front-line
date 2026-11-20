@@ -13,6 +13,7 @@ const nicoleEmail = 'nicolemancinigroup@gmail.com';
 const riccardoEmail = 'manciniriccardo9@gmail.com';
 const rossellaEmail = 'rossellamancinigroup@gmail.com';
 const valeriaEmail = 'valeriamancinigroup@gmail.com';
+const angelaEmail = 's.angelamancinigroup@gmail.com';
 
 test('the enabled employees have negotiations access', () => {
   assert.equal(model.hasNegotiationsAccess(` ${marinaEmail.toUpperCase()} `), true);
@@ -20,6 +21,7 @@ test('the enabled employees have negotiations access', () => {
   assert.equal(model.hasNegotiationsAccess(` ${riccardoEmail.toUpperCase()} `), true);
   assert.equal(model.hasNegotiationsAccess(rossellaEmail), true);
   assert.equal(model.hasNegotiationsAccess(valeriaEmail), true);
+  assert.equal(model.hasNegotiationsAccess(angelaEmail), true);
   for (const email of ['manciniriccardomaria@gmail.com', 'isabella.cappelluti@gmail.com', null, '']) assert.equal(model.hasNegotiationsAccess(email), false);
   for (const category of ['prevMotorTerzi', 'prevRetailTerzi', 'incassi', 'emissMotorSe', 'scegliAllianzConsegna', 'vitarivConsegna', 'winbackMag25', 'unknown']) assert.equal(model.isProposalCategory(category), false);
 });
@@ -175,10 +177,11 @@ test('Nicoletta records negotiations for source 017 in her existing daily report
   for (const read of globalThis.negotiationReads) assert.deepEqual(read.filters[1], ['sourceCode', 'in', ['017']]);
 });
 
-test('Valeria and Rossella can save to their assigned sources using their existing reports', async () => {
+test('Valeria, Rossella and Angela can save to their assigned sources using their existing reports', async () => {
   for (const { uid, email, ownerName, sourceName, sourceCodes } of [
     { uid: 'valeria', email: valeriaEmail, ownerName: 'Maria Valeria Bellapianta', sourceName: 'BELLAPIANTA MARIA VALERIA', sourceCodes: ['008'] },
     { uid: 'rossella', email: rossellaEmail, ownerName: 'Rosa Ruggieri', sourceName: 'RUGGIERI ROSA', sourceCodes: ['003', '045'] },
+    { uid: 'angela', email: angelaEmail, ownerName: 'Angela Sforza', sourceName: 'SFORZA ANGELA', sourceCodes: ['028', '082', '038'] },
   ]) {
     reset();
     globalThis.negotiationUser = { uid, email };
